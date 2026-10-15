@@ -43,7 +43,7 @@ dotnet run --project .\RegressionTests\DiscoveryRegression.csproj -c Release
 dotnet run --project .\RegressionTests\ControlIntegration\ControlIntegration.csproj -c Debug -r win-x64
 ```
 
-覆盖 15 项发现/缓存/异步 worker/协议向量测试与 11 项控制层/原生接口集成测试，包括：
+覆盖 15 项发现/缓存/异步 worker/协议向量测试与 15 项控制层/原生接口/兼容性集成测试，包括：
 
 - 10,000 个轮换地址不能超过缓存容量；无需新广播也能过期并通知移除。
 - 1,000 次同地址电量广播只触发一次设备集合变化，同时保留全部状态通知。
@@ -72,3 +72,7 @@ dotnet publish .\OppoPodsManager.csproj -c Release -r win-x64 -o .\artifacts\win
 ```
 
 不要同时运行原版与修复版来比较耳机行为；后续测试应在相同连接条件下分别记录进程提交内存、GC 堆、设备缓存数量和任务数量，覆盖连接、断连、广播变化与恢复场景。此次构建不替换现有安装，也不修改启动项、电源、分页文件或驱动。
+
+## 原版行为核对
+
+左侧关联设备列表与 EQ 互斥规则已按原版 `96eddba` 核对，本次仅补充含义、来源与禁用原因提示。详见 [BASELINE_REVIEW.md](BASELINE_REVIEW.md)。

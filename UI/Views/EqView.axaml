@@ -8,6 +8,7 @@
     <TextBlock Text="{l10n:Translate Eq_Title}" FontSize="16"
        HorizontalAlignment="Center" Foreground="{DynamicResource SukiText}"/>
 
+    <TextBlock x:Name="EqAvailabilityHint" FontSize="12" TextWrapping="Wrap" Opacity="0.8" IsVisible="False"/>
     <!-- ====== 预设列表 ====== -->
     <Border Padding="14,14"
       CornerRadius="14" BoxShadow="0 0 0 0 #00000000" Classes="glassCard">

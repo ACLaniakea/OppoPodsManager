@@ -60,6 +60,8 @@ namespace OppoPodsManager.UI.MainWindow;public partial class MainWindow{    priv
         var displayState = _controlManager?.GetMultiDeviceDisplayState()
             ?? new MultiDeviceDisplayState([], []);
         var devices = displayState.VisibleDevices;
+        DeviceListHiddenHint.IsVisible = connected && hiddenCount > 0;
+        DeviceListHiddenHint.Text = string.Format(TranslationCatalog.Get("MultiDevice_HiddenHint"), hiddenCount);
 
         DeviceList.Items.Clear();
         _deviceListRows.Clear();

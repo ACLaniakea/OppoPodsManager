@@ -1,5 +1,5 @@
-﻿{
-  "Sidebar_MultiDevice": "Device List",
+{
+  "Sidebar_MultiDevice": "Devices remembered by earbuds",
   "Sidebar_ConnectionStrategy": "Connection Strategy",
   "Sidebar_PriorityDevice": "Priority Device",
   "Sidebar_AutoSelect": "Auto Select",
@@ -302,5 +302,12 @@
   "Vivo_AudioEffect_3": "Crisp high pitch",
   "Vivo_AudioEffect_4": "Immersive audio",
   "Vivo_AudioEffect_5": "Melodious audiobooks",
-  "Vivo_AudioEffect_11": "Ultimate master"
+  "Vivo_AudioEffect_11": "Ultimate master",
+  "Sidebar_MultiDeviceHelp": "Phones and computers remembered by the earbuds, including this PC. The earbud model is shown on the Home battery card.",
+  "MultiDevice_HiddenHint": "Locally hidden entries: {0}. Use Restore hidden devices in Settings.",
+  "Status_NearbyOnly": "Nearby broadcast; connection unverified",
+  "Status_NearbyHelp": "Nearby broadcasts do not confirm a connection to this PC. Selecting one only reads broadcast status and does not establish Bluetooth audio.",
+  "Eq_UnavailableDisconnected": "Connect earbuds to use the equalizer.",
+  "Eq_UnavailableConflict": "Audio effects conflict. The equalizer is temporarily disabled. Turn off the conflicting effect to continue.",
+  "Eq_UnavailableUnsupported": "The current earbuds have not reported an available equalizer capability."
 }

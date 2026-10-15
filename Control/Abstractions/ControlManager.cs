@@ -1,4 +1,4 @@
-﻿using OppoPodsManager.Communication.Abstractions;
+using OppoPodsManager.Communication.Abstractions;
 using OppoPodsManager.Control.Core.Models;
 using OppoPodsManager.Control.Core.Features;
 using OppoPodsManager.Control.Subsystems.Logging;
@@ -377,7 +377,7 @@ public sealed class ControlManager : IAsyncDisposable
         {
             return _availableDevices.Values
                 .Where(plan => _confirmedDeviceIds.Contains(plan.Candidate.StableId))
-                .Select(plan => new DeviceConnectionOption(plan.Candidate.StableId, plan.Candidate.DisplayName))
+                .Select(plan => new DeviceConnectionOption(plan.Candidate.StableId, plan.Candidate.DisplayName, !CanAutoConnect(plan)))
                 .ToArray();
         }
     }
@@ -916,7 +916,7 @@ public sealed class ControlManager : IAsyncDisposable
     }
 }
 // 向界面公开的设备选择项，不暴露通信参数和协议连接计划。
-public sealed record DeviceConnectionOption(string Id, string DisplayName)
+public sealed record DeviceConnectionOption(string Id, string DisplayName, bool IsNearbyOnly = false)
 {
     public override string ToString() => DisplayName;
 }

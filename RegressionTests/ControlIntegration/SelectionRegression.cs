@@ -21,6 +21,8 @@ internal static class SelectionRegression
         Console.WriteLine("PASS Removing the connected headset does not switch to a nearby broadcast");
         await PreserveManualSelection();
         Console.WriteLine("PASS An explicit AirPods selection remains supported and is preserved");
+        await GenericConnectedDevices();
+        Console.WriteLine("PASS Connected-headset selection is generic across six names and RFCOMM/GATT transports");
         await RepeatedAppleDisposal();
         Console.WriteLine("PASS 1,000 Apple session cycles release all owned raw connections and subscriptions");
     }
@@ -81,17 +83,39 @@ internal static class SelectionRegression
         Check(retained <= 3, "Disposed BLE connections remain rooted.");
     }
 
+    private static async Task GenericConnectedDevices()
+    {
+        foreach (var (brand, name) in new[] { ("OPPO", "OPPO Enco X3"), ("OPPO", "OnePlus Buds Pro 3"),
+            ("Vivo", "vivo TWS 4"), ("Huawei", "HUAWEI FreeBuds Pro"), ("Xiaomi", "Xiaomi Buds 5"), ("Edifier", "EDIFIER NeoBuds") })
+        foreach (var transport in new[] { "rfcomm", "gatt" })
+        {
+            await using var f = new Fixture(brand, name, transport);
+            f.Discovery.Devices = [Nearby];
+            await f.Control.RefreshAvailableDevicesAsync(default);
+            var candidate = new DeviceCandidate("CONNECTED", "CONNECTED", "000000000003", name, [], [transport]);
+            f.Discovery.Devices = [Nearby, candidate];
+            var options = await f.Control.RefreshAvailableDevicesAsync(default);
+            Check(f.Control.ActiveDeviceId == candidate.StableId && f.State.Snapshot.DeviceName == name, "Selection was restricted to an OPPO name or RFCOMM.");
+            Check(options.Single(item => item.Id == Nearby.StableId).IsNearbyOnly, "Nearby origin was lost.");
+            Check(!options.Single(item => item.Id == candidate.StableId).IsNearbyOnly, "Connected headset was labeled as a broadcast.");
+            await f.Control.DisconnectAsync();
+            await f.Control.RefreshAvailableDevicesAsync(default);
+            Check(f.Control.ActiveManager is null, "Refresh overrode manual disconnect.");
+        }
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public SnapshotDiscovery Discovery { get; } = new();
         public FakeConnectionFactory Ble { get; } = new(TransportNames.BleAdvertisement);
-        public FakeConnectionFactory Classic { get; } = new("rfcomm");
+        public FakeConnectionFactory Classic { get; }
         public FrontendState State { get; } = new();
         public ControlManager Control { get; }
-        public Fixture()
+        public Fixture(string brand = "OPPO", string nameToken = "OPPO", string transport = "rfcomm")
         {
+            Classic = new(transport);
             var communication = new CommunicationController([Ble, Classic], [Discovery]);
-            Control = new ControlManager(State, new DeviceScanner(communication), [new AppleManagerFactory(), new OppoFactory()]);
+            Control = new ControlManager(State, new DeviceScanner(communication), [new AppleManagerFactory(), new OppoFactory(brand, nameToken)]);
         }
         public ValueTask DisposeAsync() => Control.DisposeAsync();
     }
@@ -142,15 +166,16 @@ internal static class SelectionRegression
         }
     }
 
-    private sealed class OppoFactory : IBrandManagerFactory
+    private sealed class OppoFactory(string brand, string nameToken) : IBrandManagerFactory
     {
-        public string Brand => "OPPO";
+        public string Brand => brand;
         public Guid ServiceId => new("0000079a-d102-11e1-9b23-00025b00a5a5");
-        public bool IsCandidateName(string? name) => name?.Contains("OPPO", StringComparison.Ordinal) == true;
+        public bool IsCandidateName(string? name) => name?.Contains(nameToken, StringComparison.Ordinal) == true;
         public Task<IBrandManager> CreateAsync(DeviceConnectionPlan plan, IRawConnection connection, CancellationToken token)
         {
             var manager = DispatchProxy.Create<IBrandManager, TestManagerProxy>();
             ((TestManagerProxy)(object)manager).Connection = connection;
+            ((TestManagerProxy)(object)manager).DeviceName = plan.Candidate.DisplayName;
             return Task.FromResult(manager);
         }
     }
@@ -159,11 +184,12 @@ internal static class SelectionRegression
 public class TestManagerProxy : DispatchProxy
 {
     public IRawConnection Connection { get; set; } = null!;
-    private readonly BusinessSnapshot _snapshot = new FrontendState().Snapshot with { DeviceName = "OPPO Enco X3", IsConnected = true };
+    public string DeviceName { get; set; } = "OPPO Enco X3";
+    private BusinessSnapshot Snapshot => new FrontendState().Snapshot with { DeviceName = DeviceName, IsConnected = true };
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
-        "get_Snapshot" => _snapshot,
-        "get_Capability" => DeviceCapability.Unknown with { ModelName = "OPPO Enco X3", IsKnownModel = true },
+        "get_Snapshot" => Snapshot,
+        "get_Capability" => DeviceCapability.Unknown with { ModelName = DeviceName, IsKnownModel = true },
         "get_SessionLiveness" => null,
         "DisconnectAsync" => Task.CompletedTask,
         "DisposeAsync" => Connection.DisposeAsync(),

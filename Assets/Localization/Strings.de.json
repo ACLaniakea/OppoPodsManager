@@ -1,5 +1,5 @@
-﻿{
-  "Sidebar_MultiDevice": "Geräteliste",
+{
+  "Sidebar_MultiDevice": "Im Kopfhörer gespeicherte Geräte",
   "Sidebar_ConnectionStrategy": "Verbindungsstrategie",
   "Sidebar_PriorityDevice": "Bevorzugtes Gerät",
   "Sidebar_AutoSelect": "Automatisch auswählen",
@@ -302,5 +302,12 @@
   "Vivo_AudioEffect_3": "Klare Hohen",
   "Vivo_AudioEffect_4": "Immersiver Klang",
   "Vivo_AudioEffect_5": "Melodische Hörbücher",
-  "Vivo_AudioEffect_11": "Ultimativer Meister"
+  "Vivo_AudioEffect_11": "Ultimativer Meister",
+  "Sidebar_MultiDeviceHelp": "Vom Kopfhörer gespeicherte Telefone und Computer, einschließlich dieses PCs. Das Kopfhörermodell steht auf der Akku-Karte der Startseite.",
+  "MultiDevice_HiddenHint": "Lokal ausgeblendete Einträge: {0}. In den Einstellungen können Sie diese wiederherstellen.",
+  "Status_NearbyOnly": "Signal in der Nähe; Verbindung unbestätigt",
+  "Status_NearbyHelp": "Ein Signal in der Nähe bestätigt keine Verbindung mit diesem PC. Die Auswahl liest nur den Signalstatus und stellt keine Bluetooth-Audioverbindung her.",
+  "Eq_UnavailableDisconnected": "Verbinden Sie Kopfhörer, um den Equalizer zu verwenden.",
+  "Eq_UnavailableConflict": "Audiokonflikt: Der Equalizer ist vorübergehend deaktiviert. Deaktivieren Sie den widersprüchlichen Effekt.",
+  "Eq_UnavailableUnsupported": "Der Kopfhörer hat noch keine verfügbare Equalizer-Funktion gemeldet."
 }

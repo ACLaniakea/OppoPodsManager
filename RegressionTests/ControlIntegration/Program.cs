@@ -31,7 +31,8 @@ internal static class Program
             Console.WriteLine("PASS Actual ControlManager cancels while discovery gate is occupied");
             await SelectionRegression.RunAsync().WaitAsync(TimeSpan.FromSeconds(20));
             NativeLayoutRegression.Run();
-            Console.WriteLine("11/11 passed");
+            CompatibilityRegression.Run();
+            Console.WriteLine("15/15 passed");
             return 0;
         }
         catch (Exception exception) { Console.WriteLine(exception); return 1; }

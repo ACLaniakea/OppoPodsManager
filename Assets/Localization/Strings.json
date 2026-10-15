@@ -1,5 +1,5 @@
-﻿{
-  "Sidebar_MultiDevice": "设备列表",
+{
+  "Sidebar_MultiDevice": "耳机关联设备",
   "Sidebar_ConnectionStrategy": "连接策略",
   "Sidebar_PriorityDevice": "优先连接设备",
   "Sidebar_AutoSelect": "自动选择",
@@ -302,5 +302,12 @@
   "Vivo_AudioEffect_3": "清脆高音",
   "Vivo_AudioEffect_4": "沉浸环绕",
   "Vivo_AudioEffect_5": "悠扬听书",
-  "Vivo_AudioEffect_11": "至臻大师"
+  "Vivo_AudioEffect_11": "至臻大师",
+  "Sidebar_MultiDeviceHelp": "耳机记忆的手机和电脑；本机名称会显示在这里。耳机型号请看首页电量卡片。",
+  "MultiDevice_HiddenHint": "本地隐藏记录：{0} 台。可在设置中点击“恢复已隐藏设备”。",
+  "Status_NearbyOnly": "附近广播，未确认连接",
+  "Status_NearbyHelp": "标注“附近广播”的耳机仅被无线扫描发现，不代表已连接本机。选择后仅查看广播状态，不会建立蓝牙音频连接。",
+  "Eq_UnavailableDisconnected": "连接耳机后可使用音效调节。",
+  "Eq_UnavailableConflict": "音效冲突，均衡器暂时禁用。请关闭冲突音效后再试。",
+  "Eq_UnavailableUnsupported": "当前耳机尚未报告可用的均衡器能力。"
 }
