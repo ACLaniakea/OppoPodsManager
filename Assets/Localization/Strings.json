@@ -24,6 +24,7 @@
   "Battery_WearingRight": "右耳{0}",
   "Anc_Title": "降噪控制",
   "Anc_Placeholder": "连接耳机查看降噪选项",
+  "Anc_Switching": "正在切换模式，请等待耳机确认…",
   "Anc_RealtimeHint": "实时计算：{0}",
   "Anc_ModeOff": "关闭",
   "Anc_ModeNoiseCancellation": "降噪",

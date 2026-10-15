@@ -83,7 +83,9 @@ public partial class SmallWindow : SukiWindow
     private bool _refreshPending;
     private bool _isClosed;
     private bool _sukiWindowDisposed;
-    private DateTime _ancUserSetAt = DateTime.MinValue;
+    private bool _ancCommandPending;
+    private long _ancCommandGeneration;
+    private IBrandManager? _ancRenderedManager;
     private bool _gameSoundCommandPending;
     private bool _syncingFeatures;
 
@@ -187,6 +189,14 @@ public partial class SmallWindow : SukiWindow
         SetNextBattery(CaseLabel, CaseChargeBolt, snapshot.CaseBattery);
         Title = DeviceText.DeviceName(snapshot.Identity?.ModelName, snapshot.DeviceName);
         var manager = _controlManager?.ActiveManager ?? _nextManager;
+        if (!ReferenceEquals(manager, _ancRenderedManager) || !snapshot.IsConnected)
+        {
+            _ancRenderedManager = manager;
+            _ancCommandPending = false;
+            _ancCommandGeneration++;
+            _ancBuiltForModel = null;
+        }
+        AncMainRow.IsEnabled = AncSubRow.IsEnabled = !_ancCommandPending;
         if (manager is not null)
         {
             var presentation = manager.Presentation;
@@ -194,9 +204,11 @@ public partial class SmallWindow : SukiWindow
             if (AncCard.IsVisible)
             {
                 BuildNextAncUi(presentation);
-                if (snapshot.Noise.Mode != NoiseMode.Unknown)
+                if (!_ancCommandPending && snapshot.Noise.Mode != NoiseMode.Unknown)
                     SyncAncFromState(presentation.CurrentNoiseModeKey);
                 HighlightAnc();
+                AncRealtimeHint.Text = TranslationCatalog.Get("Anc_Switching");
+                AncRealtimeHint.IsVisible = _ancCommandPending;
             }
         }
         else
@@ -819,8 +831,7 @@ public partial class SmallWindow : SukiWindow
 
     private void SwitchAncMain(NoiseOptionModel opt)
     {
-        if (_frontendState?.Snapshot.IsConnected != true) return;
-        _ancUserSetAt = DateTime.Now;
+        if (_frontendState?.Snapshot.IsConnected != true || _commandDispatcher is null || _ancCommandPending) return;
         _ancMain = opt.Key;
 
         if (opt.Children.Count > 0)
@@ -845,9 +856,8 @@ public partial class SmallWindow : SukiWindow
 
     private void SwitchAncSub(NoiseOptionModel opt)
     {
-        if (_frontendState?.Snapshot.IsConnected != true) return;
+        if (_frontendState?.Snapshot.IsConnected != true || _commandDispatcher is null || _ancCommandPending) return;
         _ancLevel = opt.Key;
-        _ancUserSetAt = DateTime.Now;
         ApplicationLog.Current?.Debug("UI", $"SmallWindow: ANC 子模式 -> {opt.Key}");
         _ = SetNextAncAsync(opt.Key, "ANC 子模式");
         HighlightAnc();
@@ -856,12 +866,25 @@ public partial class SmallWindow : SukiWindow
     // 通过控制层发送模式键并记录结果，避免小窗直接处理协议索引。
     private async Task SetNextAncAsync(string modeKey, string operation)
     {
-        if (_commandDispatcher is null)
-            return;
-
-        await _commandDispatcher.RunAsync(
-            operation,
-            manager => manager.SetNoiseCancellationByKeyAsync(modeKey, CancellationToken.None));
+        var manager = _controlManager?.ActiveManager ?? _nextManager;
+        if (_commandDispatcher is null || manager is null) return;
+        var generation = ++_ancCommandGeneration;
+        _ancCommandPending = true;
+        ApplyNextSnapshot(manager.Snapshot);
+        try
+        {
+            await _commandDispatcher.RunAsync(operation,
+                active => active.SetNoiseCancellationByKeyAsync(modeKey, CancellationToken.None));
+        }
+        finally
+        {
+            if (!_isClosed && generation == _ancCommandGeneration
+                && ReferenceEquals(manager, _controlManager?.ActiveManager ?? _nextManager))
+            {
+                _ancCommandPending = false;
+                ApplyNextSnapshot(manager.Snapshot);
+            }
+        }
     }
 
     /// <summary>把设备上报的 ANC 模式键映射到 UI 主/子选中态（与 MainWindow 逻辑一致）。</summary>

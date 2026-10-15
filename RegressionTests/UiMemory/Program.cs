@@ -10,6 +10,7 @@ using OppoPodsManager.Control.Core.Features;
 using OppoPodsManager.Control.Core.Models;
 using OppoPodsManager.Control.Subsystems.Logging;
 using OppoPodsManager.UI.Views;
+using SmallWindow = OppoPodsManager.UI.MiniWindow.Status.SmallWindow;
 using MainWindow = OppoPodsManager.UI.MainWindow.MainWindow;
 
 internal static class Program
@@ -43,9 +44,13 @@ internal static class Program
             foreach (var test in new Action[] { WindowLifetime, Sidebar, LogRefresh })
                 try { test(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
             if (!Baseline) try { Hints(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
+            if (!Baseline)
+                foreach (var mini in new[] { false, true })
+                    foreach (var fail in new[] { false, true })
+                        try { NoiseSelection(mini, fail); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
             Console.WriteLine("METRICS " + JsonSerializer.Serialize(Metrics));
             if (errors.Count != 0) return 1;
-            Console.WriteLine(Baseline ? "Baseline measured" : "8/8 UI regression checks passed");
+            Console.WriteLine(Baseline ? "Baseline measured" : "12/12 UI regression checks passed");
             return 0;
         }
         catch (Exception error) { Console.WriteLine(error); return 1; }
@@ -132,6 +137,73 @@ internal static class Program
         finally { Console.SetError(previous); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         Console.WriteLine("MEASURED Full log buffer freshness and idle refresh allocation");
     }
+    private static void NoiseSelection(bool mini, bool fail)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "oppo-noise-test-" + Guid.NewGuid().ToString("N"));
+        var previousError = Console.Error;
+        try
+        {
+            using var log = new ApplicationLog(directory);
+            Console.SetError(TextWriter.Null);
+            var (control, proxy) = Control();
+            proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Off, null) };
+            proxy.NoiseCommand = new();
+            var frontend = new FrontendState(); frontend.Publish(proxy.Snapshot);
+            var dispatcher = new CommandDispatcher(control, log);
+            Avalonia.Controls.Control view;
+            if (mini) view = new SmallWindow(frontend, control, dispatcher);
+            else
+            {
+                var home = new HomeView();
+                home.Attach(control, new OppoPodsManager.Assets.UserSettings.SettingsStore(null), log, dispatcher, frontend, null);
+                home.ApplySnapshot(proxy.Snapshot); view = home;
+            }
+            try
+            {
+                var options = proxy.NoiseOptions;
+                Invoke(view, "SwitchAncMain", options[2]); // Off -> transparency.
+                var hint = view.FindControl<TextBlock>("AncRealtimeHint")!;
+                var row = view.FindControl<Grid>("AncMainRow")!;
+                string Selected() => (string)view.GetType().GetField("_ancMain", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+                void Apply()
+                {
+                    if (view is HomeView home) home.ApplySnapshot(proxy.Snapshot);
+                    else Invoke(view, "ApplyNextSnapshot", proxy.Snapshot);
+                }
+                for (var i = 0; i < 20; i++)
+                {
+                    proxy.Snapshot = proxy.Snapshot with { Revision = i + 1, LeftBattery = new((byte)i, false) };
+                    Apply();
+                }
+                Check(Selected() == "Transparency" && hint.IsVisible && !row.IsEnabled,
+                    "Old battery notifications made the pending noise selection jump back.");
+                Invoke(view, "SwitchAncMain", options[1]);
+                Check(proxy.NoiseCommandCount == 1, "A second ANC write raced the pending command.");
+                if (!fail) proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Transparency, null) };
+                proxy.NoiseCommand.SetResult(!fail);
+                // Execute captured UI continuations without starting any real application.
+                Dispatcher.UIThread.RunJobs();
+                Check(Selected() == (fail ? "Off" : "Transparency") && row.IsEnabled && !hint.IsVisible,
+                    "Completed ANC command did not reconcile the real device state or release its pending UI.");
+                // Once finished, genuine physical-device changes must still update the display.
+                proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Deep, null) }; Apply();
+                Check(Selected() == "NC", "Physical ANC changes stopped updating after a command.");
+            }
+            finally
+            {
+                if (view is Window window) window.Close();
+                else ((HomeView)view).MarkClosed();
+                control.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+        }
+        finally
+        {
+            Console.SetError(previousError);
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+        Console.WriteLine($"PASS {(mini ? "Mini" : "Main")} ANC stays selected during notifications; {(fail ? "failure restores device state" : "confirmation and physical changes update it")}");
+    }
+
     private static void Hints()
     {
         var (control, proxy) = Control();
@@ -168,12 +240,20 @@ public sealed class TestApp : Application
 public class UiManagerProxy : DispatchProxy
 {
     public BusinessSnapshot Snapshot { get; set; } = new FrontendState().Snapshot with { DeviceName = "Generic headset", IsConnected = true };
+    public TaskCompletionSource<bool>? NoiseCommand { get; set; }
+    public int NoiseCommandCount { get; private set; }
+    public IReadOnlyList<NoiseOptionModel> NoiseOptions { get; } = [
+        new("Off", NoiseMode.Off, 1, []),
+        new("NC", NoiseMode.NoiseCancellation, 2, [new("Smart", NoiseMode.Smart, 3, []), new("Deep", NoiseMode.Deep, 4, [])]),
+        new("Transparency", NoiseMode.Transparency, 5, [])];
+    private Task<bool> SetNoise() { NoiseCommandCount++; return NoiseCommand?.Task ?? Task.FromResult(false); }
     private readonly DeviceCapability _capability = DeviceCapability.Unknown with { ModelName = "Generic headset", IsKnownModel = true, GameSoundMutexes = new HashSet<int> { 1 }, SupportedFeatures = new HashSet<string> { "custom-equalizer" } };
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
+        "SetNoiseCancellationByKeyAsync" => SetNoise(),
         "get_Capability" => _capability,
         "get_Snapshot" => Snapshot,
-        "get_Presentation" => new BrandPresentation("Generic headset", true, false, true, false, false, [], -6, 6, [], new HashSet<string>(), new Dictionary<string, bool>(), new Dictionary<string, bool>(), [], ""),
+        "get_Presentation" => new BrandPresentation("Generic headset", true, false, true, true, false, [], -6, 6, [], new HashSet<string>(), new Dictionary<string, bool>(), new Dictionary<string, bool>(), NoiseOptions, Snapshot.Noise.Mode.ToString()),
         "GetMultiDeviceDisplayState" => MultiDevicePolicy.BuildDisplayState(Snapshot.MultiDevice, (IReadOnlySet<string>)args![0]!),
         _ => null
     };

@@ -24,6 +24,7 @@
   "Battery_WearingRight": "Right{0}",
   "Anc_Title": "Noise Control",
   "Anc_Placeholder": "Connect earbuds to see noise control options",
+  "Anc_Switching": "Switching mode; waiting for the headset…",
   "Anc_RealtimeHint": "Real-time: {0}",
   "Anc_ModeOff": "Off",
   "Anc_ModeNoiseCancellation": "Noise Cancellation",

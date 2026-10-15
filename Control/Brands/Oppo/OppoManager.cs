@@ -1,4 +1,4 @@
-﻿using OppoPodsManager.Control.Brands.Oppo.Features;
+using OppoPodsManager.Control.Brands.Oppo.Features;
 using OppoPodsManager.Control.Brands.Oppo.Managers;
 using OppoPodsManager.Control.Core.Transport;
 using OppoPodsManager.Control.Brands.Oppo.Models;
@@ -64,7 +64,8 @@ public sealed class OppoManager : BrandManagerBase, IBrandManager
     {
         get
         {
-            var featureStates = State.Snapshot().FeatureStates;
+            var snapshot = State.Snapshot();
+            var featureStates = snapshot.FeatureStates;
             return new BrandPresentation(
                 Capability.ModelName,
                 Capability.IsKnownModel,
@@ -80,9 +81,9 @@ public sealed class OppoManager : BrandManagerBase, IBrandManager
                 Capability.EqualizerPresets,
                 FeatureSwitches.ResolveVisibleControls(Capability, featureStates),
                 FeatureSwitches.ResolveControlStates(featureStates),
-                FeatureSwitches.ResolveControlEnabledStates(Capability, featureStates, State.Snapshot().Game),
+                FeatureSwitches.ResolveControlEnabledStates(Capability, featureStates, snapshot.Game),
                 NoiseCancellation.BuildOptions(Capability),
-                NoiseCancellation.GetKey(State.Snapshot().Noise.SmartLevel ?? State.Snapshot().Noise.Mode),
+                NoiseCancellation.GetKey(snapshot.Noise.Mode),
                 Capability.BatteryLayout);
         }
     }

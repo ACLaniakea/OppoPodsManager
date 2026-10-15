@@ -59,7 +59,7 @@ jobs:
             source_commit = $env:GITHUB_SHA
             build = 'Windows x64 NativeAOT; original Release configuration'
             workflow_run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            regression_tests = 42
+            regression_tests = 48
             ui_baseline = (Get-Content artifacts/ui-baseline.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
             ui_optimized = (Get-Content artifacts/ui-optimized.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
             hardware_verification = 'pending'

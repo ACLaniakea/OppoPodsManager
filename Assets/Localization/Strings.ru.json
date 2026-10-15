@@ -24,6 +24,7 @@
   "Battery_WearingRight": "Правый{0}",
   "Anc_Title": "Шумоподавление",
   "Anc_Placeholder": "Подключите наушники для просмотра опций",
+  "Anc_Switching": "Переключение режима; ожидание подтверждения наушников…",
   "Anc_RealtimeHint": "В реальном времени: {0}",
   "Anc_ModeOff": "Выкл.",
   "Anc_ModeNoiseCancellation": "Шумоподавление",

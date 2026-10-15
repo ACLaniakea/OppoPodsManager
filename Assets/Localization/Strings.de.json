@@ -24,6 +24,7 @@
   "Battery_WearingRight": "Rechts {0}",
   "Anc_Title": "Geräuschsteuerung",
   "Anc_Placeholder": "Ohrhörer verbinden, um Optionen zu sehen",
+  "Anc_Switching": "Moduswechsel; Bestätigung des Headsets wird abgewartet…",
   "Anc_RealtimeHint": "Echtzeit: {0}",
   "Anc_ModeOff": "Aus",
   "Anc_ModeNoiseCancellation": "Geräuschunterdrückung",

@@ -32,7 +32,8 @@ internal static class Program
             await SelectionRegression.RunAsync().WaitAsync(TimeSpan.FromSeconds(20));
             NativeLayoutRegression.Run();
             CompatibilityRegression.Run();
-            Console.WriteLine("15/15 passed");
+            await NoisePresentationRegression.RunAsync();
+            Console.WriteLine("17/17 passed");
             return 0;
         }
         catch (Exception exception) { Console.WriteLine(exception); return 1; }

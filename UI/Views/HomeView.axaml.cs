@@ -36,6 +36,8 @@ public partial class HomeView : PageView
     private bool _wasConnected;
     private IBrandManager? _renderedManager;
     private bool _gameSoundCommandPending;
+    private bool _ancCommandPending;
+    private long _ancCommandGeneration;
     private bool _realClose;
 
     public HomeView()
@@ -92,6 +94,9 @@ public partial class HomeView : PageView
             _findDeviceActive = false;
             BtnFindDevice.Content = TranslationCatalog.Get("Feature_FindDevice");
             _ancBuiltForModel = "";
+            _ancCommandPending = false;
+            _ancCommandGeneration++;
+            _ancLastSub.Clear();
         }
         UpdateNextConnectionStatus(snapshot);
         ApplyBatteryLayout(
@@ -386,7 +391,7 @@ public partial class HomeView : PageView
     private void SwitchAncMain(NoiseOptionModel opt)
     {
         Log?.Debug("UI", $"用户操作: ANC 主模式 -> {opt.Key}");
-        if (ControlManager?.ActiveManager is null) return;
+        if (ControlManager?.ActiveManager is null || CommandDispatcher is null || _ancCommandPending) return;
         _ancMain = opt.Key;
 
         if (opt.Children.Count > 0)
@@ -399,13 +404,13 @@ public partial class HomeView : PageView
             _ancLevel = target;
             // 对齐 main 分支：容器型（降噪）下发“上次子模式/首子模式”位，而非父码 01 01 02。
             // 父码不被欢律使用，且会让耳机恢复上次子模式导致 UI 回弹；具体子模式位由耳机回报同步。
-            _ = CommandDispatcher?.RunAsync("ANC 主模式", manager => manager.SetNoiseCancellationByKeyAsync(target, CancellationToken.None));
+            _ = SetNextAncAsync(target, "ANC 主模式");
         }
         else
         {
             AncSubRow.IsVisible = false;
             _ancLevel = "";
-            _ = CommandDispatcher?.RunAsync("ANC 主模式", manager => manager.SetNoiseCancellationByKeyAsync(opt.Key, CancellationToken.None));
+            _ = SetNextAncAsync(opt.Key, "ANC 主模式");
         }
         HighlightAnc();
     }
@@ -413,11 +418,34 @@ public partial class HomeView : PageView
     private void SwitchAncSub(NoiseOptionModel opt)
     {
         Log?.Debug("UI", $"用户操作: ANC 子级别 -> {opt.Key}");
-        if (ControlManager?.ActiveManager is null) return;
+        if (ControlManager?.ActiveManager is null || CommandDispatcher is null || _ancCommandPending) return;
         _ancLevel = opt.Key;
         _ancLastSub[_ancMain] = opt.Key;
-        _ = CommandDispatcher?.RunAsync("ANC 子模式", manager => manager.SetNoiseCancellationByKeyAsync(opt.Key, CancellationToken.None));
+        _ = SetNextAncAsync(opt.Key, "ANC 子模式");
         HighlightAnc();
+    }
+
+    private async Task SetNextAncAsync(string modeKey, string operation)
+    {
+        var manager = ControlManager?.ActiveManager;
+        if (manager is null || CommandDispatcher is null) return;
+        var generation = ++_ancCommandGeneration;
+        _ancCommandPending = true;
+        ApplyNextNoiseSnapshot(manager.Snapshot);
+        try
+        {
+            await CommandDispatcher.RunAsync(operation,
+                active => active.SetNoiseCancellationByKeyAsync(modeKey, CancellationToken.None));
+        }
+        finally
+        {
+            if (!_realClose && generation == _ancCommandGeneration
+                && ReferenceEquals(manager, ControlManager?.ActiveManager))
+            {
+                _ancCommandPending = false;
+                ApplyNextNoiseSnapshot(manager.Snapshot);
+            }
+        }
     }
 
     private void AncMain_Click(object? s, RoutedEventArgs e)
@@ -476,9 +504,16 @@ public partial class HomeView : PageView
             $"{snapshot.Identity?.ProductId}|{presentation.ModelName}",
             presentation.NoiseOptions);
 
+        AncMainRow.IsEnabled = AncSubRow.IsEnabled = !_ancCommandPending;
+        if (_ancCommandPending)
+        {
+            AncRealtimeHint.Text = TranslationCatalog.Get("Anc_Switching");
+            AncRealtimeHint.IsVisible = true;
+            return;
+        }
         if (snapshot.Noise.Mode != NoiseMode.Unknown)
         {
-            SyncAncFromState(manager.Presentation.CurrentNoiseModeKey);
+            SyncAncFromState(presentation.CurrentNoiseModeKey);
             HighlightAnc();
         }
 
@@ -512,6 +547,9 @@ public partial class HomeView : PageView
 
     internal void ResetNextAncUi()
     {
+        _ancCommandPending = false;
+        _ancCommandGeneration++;
+        AncMainRow.IsEnabled = AncSubRow.IsEnabled = true;
         AncPanel.IsVisible = true;
         AncMainRow.Children.Clear();
         AncMainRow.ColumnDefinitions.Clear();
