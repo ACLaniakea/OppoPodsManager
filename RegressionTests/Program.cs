@@ -30,6 +30,9 @@ internal static class Program
             ("Controller disposal cancels discovery and suppresses delivery", ControllerDisposal),
             ("Manual discovery still deduplicates and sorts devices", ManualDiscovery),
             ("Huawei MBB known vectors moved out of unused production self-test", MbbProtocolVectors),
+            ("UI dispatcher keeps one callback and only the newest of 10,000 values", UiBurst),
+            ("Disposed UI dispatcher drops its queued values and subscriber", UiDisposal),
+            ("UI dispatcher preserves reentrant updates and recovers after apply errors", UiReentrancy),
         ];
         var failures = 0;
         foreach (var test in tests)
@@ -276,6 +279,43 @@ internal static class Program
         var frame = codec.Decode(expected).Single();
         Check(frame.Command == 0x2B49 && frame.Payload.Span.SequenceEqual(payload), "MBB decoding differs from known vector.");
         Check(MbbFrameCodec.Crc16Ccitt("123456789"u8) == 0x31C3, "CRC16/XMODEM standard vector failed.");
+    });
+
+    private static Task UiBurst() => Sync(() =>
+    {
+        var queue = new Queue<Action>();
+        var delivered = new List<int>();
+        using var worker = new OppoPodsManager.UI.LatestUiUpdate<int>(queue.Enqueue, delivered.Add);
+        for (var i = 0; i < 10_000; i++) worker.Post(i);
+        Check(queue.Count == 1, "Dispatcher retained a callback for each update.");
+        queue.Dequeue()();
+        Check(delivered.SequenceEqual(new[] { 9999 }) && queue.Count == 0, "Latest UI state was lost.");
+    });
+
+    private static Task UiDisposal() => Sync(() =>
+    {
+        var queue = new Queue<Action>();
+        var worker = new OppoPodsManager.UI.LatestUiUpdate<byte[]>(queue.Enqueue, _ => throw new InvalidOperationException("Disposed callback ran"));
+        var value = new byte[1024 * 1024];
+        worker.Post(value); worker.Dispose(); worker.Post([]);
+        queue.Dequeue()();
+        Check(queue.Count == 0, "Disposed UI worker retained work.");
+    });
+
+    private static Task UiReentrancy() => Sync(() =>
+    {
+        var queue = new Queue<Action>();
+        var delivered = new List<int>();
+        OppoPodsManager.UI.LatestUiUpdate<int>? worker = null;
+        worker = new(queue.Enqueue, value => { delivered.Add(value); if (value == 1) { worker!.Post(2); worker.Post(3); throw new InvalidOperationException("Test"); } });
+        using (worker)
+        {
+            worker.Post(1);
+            try { queue.Dequeue()(); } catch (InvalidOperationException) { }
+            Check(queue.Count == 1, "Reentrant UI updates created multiple callbacks.");
+            queue.Dequeue()();
+            Check(delivered.SequenceEqual(new[] { 1, 3 }), "Apply error stranded pending UI state.");
+        }
     });
 
     private sealed class ManualClock : TimeProvider

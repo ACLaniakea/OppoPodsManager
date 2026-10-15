@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>Exe</OutputType>
+  <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+  <UseAppHost>false</UseAppHost>
+  <ImplicitUsings>enable</ImplicitUsings>
+  <Nullable>enable</Nullable>
+  <ApplicationProject Condition="'$(ApplicationProject)' == ''">../../OppoPodsManager.csproj</ApplicationProject>
+ </PropertyGroup>
+ <ItemGroup>
+  <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+  <ProjectReference Include="$(ApplicationProject)" />
+ </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
@@ -34,6 +34,7 @@ namespace OppoPodsManager.UI.MiniWindow.Status;
 public partial class SmallWindow : SukiWindow
 {
     private readonly Action? _onDeactivated;
+    private readonly LatestUiUpdate<BusinessSnapshot> _snapshotUpdates;
     private FrontendState? _frontendState;
     private ControlManager? _controlManager;
     private CommandDispatcher? _commandDispatcher;
@@ -53,6 +54,7 @@ public partial class SmallWindow : SukiWindow
     // 为 Avalonia/AOT 资源加载器提供不触发业务逻辑的公开构造入口。
     public SmallWindow()
     {
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
         InitializeComponent();
     }
 
@@ -96,6 +98,7 @@ public partial class SmallWindow : SukiWindow
         {
             ApplicationLog.Current?.Debug("UI", "SmallWindow: 关闭");
             _isClosed = true;
+            _snapshotUpdates.Dispose();
             if (_frontendState is not null)
                 _frontendState.Changed -= OnNextStateChanged;
             PropertyChanged -= OnWindowPropertyChanged;
@@ -137,6 +140,7 @@ public partial class SmallWindow : SukiWindow
         OppoPodsManager.Assets.UserSettings.SettingsManager? settings = null,
         Action? onDeactivated = null)
     {
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
         _onDeactivated = onDeactivated;
         _controlManager = controlManager;
         // 小窗口只接收应用层命令调度器，不在窗口内构造控制逻辑。
@@ -169,7 +173,7 @@ public partial class SmallWindow : SukiWindow
     // 把 Next 状态切换到 Avalonia UI 线程，避免通知线程直接访问控件。
     private void OnNextStateChanged(object? sender, BusinessSnapshot snapshot)
     {
-        Dispatcher.UIThread.Post(() => ApplyNextSnapshot(snapshot));
+        _snapshotUpdates.Post(snapshot);
     }
 
     // 更新小窗的电量和降噪卡片可见性，具体协议状态由控制层提供。

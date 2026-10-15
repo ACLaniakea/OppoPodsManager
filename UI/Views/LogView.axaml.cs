@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -12,7 +12,7 @@ namespace OppoPodsManager.UI.Views;
 public partial class LogView : PageView
 {
     private readonly ObservableCollection<string> _renderedEntries = new();
-    private int _renderedVersion = -1;
+    private long _renderedVersion = -1;
     private DispatcherTimer? _refreshTimer;
     private bool _autoScroll = true;
     private bool _scrollPending;
@@ -60,12 +60,11 @@ public partial class LogView : PageView
 
     private void RefreshLogView()
     {
-        var lines = (Log ?? ApplicationLog.Current)?.Snapshot()
-            .Select(entry => entry.ToString())
-            .ToArray() ?? [];
-        var version = lines.Length;
-        if (version == _renderedVersion && _renderedEntries.Count > 0)
+        var log = Log ?? ApplicationLog.Current;
+        var version = log?.Version ?? 0;
+        if (version == _renderedVersion)
             return;
+        var lines = log?.Snapshot().Select(entry => entry.ToString()).ToArray() ?? [];
 
         _renderedEntries.Clear();
         foreach (var line in lines)

@@ -158,6 +158,10 @@ using SukiUI;namespace OppoPodsManager.UI.MainWindow;public partial class MainWi
             return;
         _runtimeUiDisposed = true;
 
+        _snapshotUpdates.Dispose();
+        _deviceOptionUpdates.Dispose();
+        SukiTheme.GetInstance().OnBaseThemeChanged -= OnSukiBaseThemeChanged;
+        HomeView?.MarkClosed();
         Closing -= OnWindowClosing;
         if (_frontendState is not null)
             _frontendState.Changed -= OnNextStateChanged;

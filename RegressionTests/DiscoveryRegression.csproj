@@ -8,7 +8,8 @@
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="ControlIntegration/**/*.cs" />
+    <Compile Remove="ControlIntegration/**/*.cs;UiMemory/**/*.cs" />
+    <Compile Include="../UI/LatestUiUpdate.cs" Link="Source/LatestUiUpdate.cs" />
     <Compile Include="../Communication/LatestAsyncWorker.cs" Link="Source/LatestAsyncWorker.cs" />
     <Compile Include="../Communication/CommunicationController.cs" Link="Source/CommunicationController.cs" />
     <Compile Include="../Communication/Abstractions/*.cs" Link="Source/%(Filename)%(Extension)" />

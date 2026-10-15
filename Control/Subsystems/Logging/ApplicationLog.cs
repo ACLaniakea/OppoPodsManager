@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
@@ -22,6 +22,8 @@ public sealed class ApplicationLog : TraceListener, IDisposable
     private StreamWriter? _writer;
     private bool _disposed;
     private int _pendingCount;
+    private long _version;
+    public long Version => Interlocked.Read(ref _version);
 
     // 提供给未采用依赖注入的底层模块使用的当前应用日志实例。
     public static ApplicationLog? Current { get; private set; }
@@ -120,6 +122,7 @@ public sealed class ApplicationLog : TraceListener, IDisposable
         var entry = new LogEntry(DateTimeOffset.Now, level, category, message);
         _entries.Enqueue(entry);
         while (_entries.Count > MaximumEntries && _entries.TryDequeue(out _)) { }
+        Interlocked.Increment(ref _version);
 
         var shouldFlush = false;
         lock (_gate)

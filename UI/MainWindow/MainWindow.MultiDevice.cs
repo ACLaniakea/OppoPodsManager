@@ -52,11 +52,37 @@ namespace OppoPodsManager.UI.MainWindow;public partial class MainWindow{    priv
                 menu.Close();
         }
     }
+    private MultiDeviceSnapshot? _renderedMultiDevice;
+    private IBrandManager? _renderedMultiManager;
+    private DeviceCapability? _renderedMultiCapability;
+    private string? _renderedMultiLanguage;
+    private int _renderedMultiHiddenCount = -1;
+    private bool _renderedMultiConnected;
+    private bool _renderedMultiLightTheme;
+
     private void SyncNextMultiDeviceList(BusinessSnapshot? snapshot)
     {
         var manager = _controlManager?.ActiveManager;
         var connected = snapshot?.IsConnected == true;
         var hiddenCount = _controlManager?.GetHiddenMultiDeviceCount() ?? 0;
+        var multiDevice = snapshot?.MultiDevice ?? MultiDeviceSnapshot.Empty;
+        var language = TranslationCatalog.CurrentLanguage;
+        if (ReferenceEquals(manager, _renderedMultiManager)
+            && ReferenceEquals(manager?.Capability, _renderedMultiCapability)
+            && connected == _renderedMultiConnected && hiddenCount == _renderedMultiHiddenCount
+            && language == _renderedMultiLanguage && _isLightTheme == _renderedMultiLightTheme
+            && _renderedMultiDevice is { } previous
+            && previous.IsAutomaticPriority == multiDevice.IsAutomaticPriority
+            && previous.PriorityDeviceAddress == multiDevice.PriorityDeviceAddress
+            && previous.Devices.SequenceEqual(multiDevice.Devices))
+            return;
+        _renderedMultiDevice = multiDevice;
+        _renderedMultiManager = manager;
+        _renderedMultiCapability = manager?.Capability;
+        _renderedMultiConnected = connected;
+        _renderedMultiHiddenCount = hiddenCount;
+        _renderedMultiLanguage = language;
+        _renderedMultiLightTheme = _isLightTheme;
         var displayState = _controlManager?.GetMultiDeviceDisplayState()
             ?? new MultiDeviceDisplayState([], []);
         var devices = displayState.VisibleDevices;

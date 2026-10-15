@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.302
@@ -23,6 +24,23 @@ jobs:
         run: dotnet run --project RegressionTests/DiscoveryRegression.csproj -c Release
       - name: Control and compatibility regression tests
         run: dotnet run --project RegressionTests/ControlIntegration/ControlIntegration.csproj -c Debug -r win-x64
+      - name: Measure previous UI memory behavior
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = Join-Path $env:RUNNER_TEMP 'oppo-ui-baseline'
+          $archive = Join-Path $env:RUNNER_TEMP 'oppo-ui-baseline.zip'
+          git archive 5e08d6d07c89ee7a93ea1208784c34bc60478b15 -o $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline archive failed' }
+          Expand-Archive $archive $baseline
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dotnet run --project RegressionTests/UiMemory/UiMemory.csproj -c Debug -r win-x64 "-p:ApplicationProject=$baseline/OppoPodsManager.csproj" -- --baseline | Tee-Object artifacts/ui-baseline.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline UI measurement failed' }
+      - name: Validate optimized UI memory behavior
+        shell: pwsh
+        run: |
+          dotnet run --project RegressionTests/UiMemory/UiMemory.csproj -c Debug -r win-x64 | Tee-Object artifacts/ui-optimized.txt
+          if ($LASTEXITCODE -ne 0) { throw 'UI regression test failed' }
       - name: Publish using the original NativeAOT release configuration
         run: dotnet publish OppoPodsManager.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o artifacts/win-x64
       - name: Record source and binary identity
@@ -30,7 +48,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $destination = 'artifacts/win-x64'
-          Copy-Item LICENSE, MEMORY_FIX.md, BASELINE_REVIEW.md $destination
+          Copy-Item LICENSE, MEMORY_FIX.md, BASELINE_REVIEW.md, artifacts/ui-baseline.txt, artifacts/ui-optimized.txt $destination
           $binary = Get-Item "$destination/OppoPodsManager.exe"
           if ($binary.VersionInfo.FileVersion -ne '2.0.1.0') { throw 'Unexpected binary version' }
           $manifest = [ordered]@{
@@ -38,7 +56,9 @@ jobs:
             source_commit = $env:GITHUB_SHA
             build = 'Windows x64 NativeAOT; original Release configuration'
             workflow_run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            regression_tests = 30
+            regression_tests = 41
+            ui_baseline = (Get-Content artifacts/ui-baseline.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
+            ui_optimized = (Get-Content artifacts/ui-optimized.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
             hardware_verification = 'pending'
             file_version = $binary.VersionInfo.FileVersion
             product_version = $binary.VersionInfo.ProductVersion

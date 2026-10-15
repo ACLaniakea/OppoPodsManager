@@ -34,6 +34,8 @@ using Avalonia.Interactivity;namespace OppoPodsManager.UI.MainWindow;public part
         if (page == "deviceinfo" || page == "settings") SettingsView?.RefreshDeviceInfo();
         if (page == "eq" && _frontendState is not null)
             EqView?.ApplySnapshot(_frontendState.Snapshot);
+        if (page == "deviceinfo" && _frontendState is not null)
+            DeviceInfoView?.ApplySnapshot(_frontendState.Snapshot);
         if (page == "log") LogView.Start();
     }
     private void BtnViewLog_Click(object? s, Avalonia.Interactivity.RoutedEventArgs e)

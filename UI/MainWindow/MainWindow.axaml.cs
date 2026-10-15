@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -161,6 +161,8 @@ public partial class MainWindow : SukiWindow, IViewHost
         _uiSettings = new SettingsStore(nextSettings);
         _backgroundSelection = new BackgroundSelectionService(_uiSettings, _backgroundImages);
         _logManager = ApplicationLog.Current;
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
+        _deviceOptionUpdates = new(static callback => Dispatcher.UIThread.Post(callback), devices => HomeView?.ApplyNextDevices(devices));
         try
         {
             _logManager?.Debug("UI", "MainWindow 构造开始");
@@ -257,12 +259,15 @@ public partial class MainWindow : SukiWindow, IViewHost
         _ = HomeView?.RefreshNextDevicesAsync();
     }
 
+    private readonly LatestUiUpdate<BusinessSnapshot> _snapshotUpdates;
+    private readonly LatestUiUpdate<IReadOnlyList<DeviceConnectionOption>> _deviceOptionUpdates;
+
     private void OnAvailableDevicesChanged(object? sender, DeviceOptionsChangedEventArgs args)
     {
         if (_realClose)
             return;
 
-        Dispatcher.UIThread.Post(() => HomeView?.ApplyNextDevices(args.Devices));
+        _deviceOptionUpdates.Post(args.Devices);
     }
 
     // 将控制层发布的不可变快照转换为主窗口当前视觉状态。
@@ -271,7 +276,7 @@ public partial class MainWindow : SukiWindow, IViewHost
         if (_realClose)
             return;
 
-        Dispatcher.UIThread.Post(() => ApplyNextSnapshot(snapshot));
+        _snapshotUpdates.Post(snapshot);
     }
 
     // 仅在主窗口可见时保持交互轮询租约，隐藏到托盘后释放轮询压力。
@@ -300,8 +305,10 @@ public partial class MainWindow : SukiWindow, IViewHost
         UpdateTitle();
         HomeView?.ApplySnapshot(snapshot);
         SettingsView?.ApplySnapshot(snapshot);
-        DeviceInfoView?.ApplySnapshot(snapshot);
-        EqView?.ApplySnapshot(snapshot);
+        if (DeviceInfoPanel.IsVisible)
+            DeviceInfoView?.ApplySnapshot(snapshot);
+        if (EqPanel.IsVisible)
+            EqView?.ApplySnapshot(snapshot);
         SyncNextMultiDeviceList(snapshot);
         _logManager?.Debug("UI", $"快照已应用：revision={snapshot.Revision}，connected={snapshot.IsConnected}，device={snapshot.DeviceName ?? ""}。");
     }
