@@ -251,6 +251,8 @@ public class UiManagerProxy : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
         "SetNoiseCancellationByKeyAsync" => SetNoise(),
+        "DisconnectAsync" => Task.CompletedTask,
+        "DisposeAsync" => ValueTask.CompletedTask,
         "get_Capability" => _capability,
         "get_Snapshot" => Snapshot,
         "get_Presentation" => new BrandPresentation("Generic headset", true, false, true, true, false, [], -6, 6, [], new HashSet<string>(), new Dictionary<string, bool>(), new Dictionary<string, bool>(), NoiseOptions, Snapshot.Noise.Mode.ToString()),
