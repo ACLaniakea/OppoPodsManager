@@ -34,6 +34,7 @@ public partial class HomeView : PageView
     private DateTime _connectionStatusStartedAt = DateTime.MinValue;
     private bool _findDeviceActive;
     private bool _wasConnected;
+    private IBrandManager? _renderedManager;
     private bool _gameSoundCommandPending;
     private bool _realClose;
 
@@ -81,6 +82,17 @@ public partial class HomeView : PageView
         if (_realClose)
             return;
 
+        var currentManager = ControlManager?.ActiveManager;
+        if (!ReferenceEquals(currentManager, _renderedManager))
+        {
+            // Coalesced rendering may skip an intermediate disconnected frame.
+            // Session-local controls must still reset when the manager changes.
+            _renderedManager = currentManager;
+            _wasConnected = false;
+            _findDeviceActive = false;
+            BtnFindDevice.Content = TranslationCatalog.Get("Feature_FindDevice");
+            _ancBuiltForModel = "";
+        }
         UpdateNextConnectionStatus(snapshot);
         ApplyBatteryLayout(
             ControlManager?.ActiveManager?.Presentation?.BatteryLayout ?? BatteryLayout.Auto,

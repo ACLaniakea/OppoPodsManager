@@ -54,7 +54,7 @@ public partial class SmallWindow : SukiWindow
     // 为 Avalonia/AOT 资源加载器提供不触发业务逻辑的公开构造入口。
     public SmallWindow()
     {
-        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot, static snapshot => snapshot.Revision);
         InitializeComponent();
     }
 
@@ -140,7 +140,7 @@ public partial class SmallWindow : SukiWindow
         OppoPodsManager.Assets.UserSettings.SettingsManager? settings = null,
         Action? onDeactivated = null)
     {
-        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot, static snapshot => snapshot.Revision);
         _onDeactivated = onDeactivated;
         _controlManager = controlManager;
         // 小窗口只接收应用层命令调度器，不在窗口内构造控制逻辑。

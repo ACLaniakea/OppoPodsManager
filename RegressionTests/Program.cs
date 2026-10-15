@@ -33,6 +33,7 @@ internal static class Program
             ("UI dispatcher keeps one callback and only the newest of 10,000 values", UiBurst),
             ("Disposed UI dispatcher drops its queued values and subscriber", UiDisposal),
             ("UI dispatcher preserves reentrant updates and recovers after apply errors", UiReentrancy),
+            ("UI dispatcher rejects out-of-order state revisions", UiVersions),
         ];
         var failures = 0;
         foreach (var test in tests)
@@ -279,6 +280,16 @@ internal static class Program
         var frame = codec.Decode(expected).Single();
         Check(frame.Command == 0x2B49 && frame.Payload.Span.SequenceEqual(payload), "MBB decoding differs from known vector.");
         Check(MbbFrameCodec.Crc16Ccitt("123456789"u8) == 0x31C3, "CRC16/XMODEM standard vector failed.");
+    });
+
+    private static Task UiVersions() => Sync(() =>
+    {
+        var queue = new Queue<Action>();
+        var delivered = new List<int>();
+        using var worker = new OppoPodsManager.UI.LatestUiUpdate<int>(queue.Enqueue, delivered.Add, value => value);
+        worker.Post(20); worker.Post(19); queue.Dequeue()();
+        worker.Post(20); worker.Post(18);
+        Check(delivered.SequenceEqual(new[] { 20 }) && queue.Count == 0, "Stale UI event replaced newer state.");
     });
 
     private static Task UiBurst() => Sync(() =>

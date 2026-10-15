@@ -24,8 +24,9 @@ internal static class Program
         => owner.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(target, value);
     private static void Close(MainWindow window)
     {
-        Invoke(window, "DisposeRuntimeUiResources");
-        Invoke(window, "DisposeSukiWindow");
+        // Close the actual Avalonia window as well as its application resources.
+        // Calling only the private disposal helpers leaves the platform window alive.
+        window.Close();
         Dispatcher.UIThread.RunJobs();
     }
     public static int Main(string[] args)
@@ -34,11 +35,16 @@ internal static class Program
         try
         {
             AppBuilder.Configure<TestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
-            WindowLifetime();
-            Sidebar();
-            LogRefresh();
-            if (!Baseline) Hints();
+            var assembly = typeof(MainWindow).Assembly;
+            var optimized = assembly.GetType("OppoPodsManager.UI.LatestUiUpdate`1") is not null;
+            Console.WriteLine("APPLICATION " + assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+            if (optimized == Baseline) throw new InvalidOperationException("Wrong application assembly loaded for comparison.");
+            var errors = new List<Exception>();
+            foreach (var test in new Action[] { WindowLifetime, Sidebar, LogRefresh })
+                try { test(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
+            if (!Baseline) try { Hints(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
             Console.WriteLine("METRICS " + JsonSerializer.Serialize(Metrics));
+            if (errors.Count != 0) return 1;
             Console.WriteLine(Baseline ? "Baseline measured" : "8/8 UI regression checks passed");
             return 0;
         }
@@ -66,7 +72,7 @@ internal static class Program
         var retained = references.Count(reference => reference.IsAlive);
         Metrics["closed_windows_retained_of_8"] = retained;
         Check(retained <= 1, "Closed windows remain rooted after UI disposal: " + retained);
-        Console.WriteLine("PASS Closed main windows are collectible");
+        Console.WriteLine("MEASURED Closed main-window lifetime");
     }
     private static (ControlManager, UiManagerProxy) Control()
     {
@@ -99,7 +105,7 @@ internal static class Program
         Invoke(window, "SyncNextMultiDeviceList", proxy.Snapshot);
         Check(!ReferenceEquals(first, list.Items[0]) && list.Items.Count == 2, "Changed device data did not refresh the sidebar.");
         Close(window);
-        Console.WriteLine("PASS Sidebar reuses rows for 500 battery updates and refreshes changed devices");
+        Console.WriteLine("MEASURED Sidebar allocation and changed-device refresh");
     }
     private static void LogRefresh()
     {
@@ -107,8 +113,8 @@ internal static class Program
         var directory = Path.Combine(Path.GetTempPath(), "oppo-ui-log-" + Guid.NewGuid().ToString("N"));
         try
         {
-            Console.SetError(TextWriter.Null);
             using var log = new ApplicationLog(directory);
+            Console.SetError(TextWriter.Null);
             for (var i = 0; i < 2200; i++) log.Info("Test", "entry " + i);
             var view = new LogView();
             Invoke(view, "RefreshLogView");
@@ -124,7 +130,7 @@ internal static class Program
             Check(fresh && bytes < 16 * 1024, "Full log buffer is stale or unchanged logs are repeatedly formatted.");
         }
         finally { Console.SetError(previous); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
-        Console.WriteLine("PASS Full log buffer stays current and idle refresh avoids reformatting");
+        Console.WriteLine("MEASURED Full log buffer freshness and idle refresh allocation");
     }
     private static void Hints()
     {

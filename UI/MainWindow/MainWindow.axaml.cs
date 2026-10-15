@@ -161,7 +161,7 @@ public partial class MainWindow : SukiWindow, IViewHost
         _uiSettings = new SettingsStore(nextSettings);
         _backgroundSelection = new BackgroundSelectionService(_uiSettings, _backgroundImages);
         _logManager = ApplicationLog.Current;
-        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot);
+        _snapshotUpdates = new(static callback => Dispatcher.UIThread.Post(callback), ApplyNextSnapshot, static snapshot => snapshot.Revision);
         _deviceOptionUpdates = new(static callback => Dispatcher.UIThread.Post(callback), devices => HomeView?.ApplyNextDevices(devices));
         try
         {

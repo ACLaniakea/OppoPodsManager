@@ -39,6 +39,9 @@ jobs:
       - name: Validate optimized UI memory behavior
         shell: pwsh
         run: |
+          # Both references have the same assembly name/version. Force a fresh copy
+          # into the harness output instead of reusing the baseline's newer DLL.
+          Remove-Item RegressionTests/UiMemory/bin, RegressionTests/UiMemory/obj -Recurse -Force
           dotnet run --project RegressionTests/UiMemory/UiMemory.csproj -c Debug -r win-x64 | Tee-Object artifacts/ui-optimized.txt
           if ($LASTEXITCODE -ne 0) { throw 'UI regression test failed' }
       - name: Publish using the original NativeAOT release configuration
@@ -56,7 +59,7 @@ jobs:
             source_commit = $env:GITHUB_SHA
             build = 'Windows x64 NativeAOT; original Release configuration'
             workflow_run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            regression_tests = 41
+            regression_tests = 42
             ui_baseline = (Get-Content artifacts/ui-baseline.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
             ui_optimized = (Get-Content artifacts/ui-optimized.txt | Where-Object { $_.StartsWith('METRICS ') } | Select-Object -Last 1).Substring(8) | ConvertFrom-Json
             hardware_verification = 'pending'

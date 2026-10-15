@@ -2,13 +2,14 @@ namespace OppoPodsManager.UI;
 
 // Keep one queued dispatcher callback and the latest value. A slow UI must not
 // retain a snapshot/closure for every device notification.
-internal sealed class LatestUiUpdate<T>(Action<Action> schedule, Action<T> apply) : IDisposable
+internal sealed class LatestUiUpdate<T>(Action<Action> schedule, Action<T> apply, Func<T, long>? version = null) : IDisposable
 {
     private readonly object _gate = new();
     private Action<T>? _apply = apply;
     private T? _pending;
     private bool _queued;
     private bool _disposed;
+    private long _highestVersion = long.MinValue;
 
     public void Post(T value)
     {
@@ -16,6 +17,13 @@ internal sealed class LatestUiUpdate<T>(Action<Action> schedule, Action<T> apply
         {
             if (_disposed)
                 return;
+            if (version is not null)
+            {
+                var nextVersion = version(value);
+                if (nextVersion <= _highestVersion)
+                    return;
+                _highestVersion = nextVersion;
+            }
             _pending = value;
             if (_queued)
                 return;
