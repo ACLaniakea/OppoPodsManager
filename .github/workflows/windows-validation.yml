@@ -1,0 +1,53 @@
+name: Windows tests and NativeAOT build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.302
+      - name: Discovery regression tests
+        run: dotnet run --project RegressionTests/DiscoveryRegression.csproj -c Release
+      - name: Control and compatibility regression tests
+        run: dotnet run --project RegressionTests/ControlIntegration/ControlIntegration.csproj -c Debug -r win-x64
+      - name: Publish using the original NativeAOT release configuration
+        run: dotnet publish OppoPodsManager.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o artifacts/win-x64
+      - name: Record source and binary identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $destination = 'artifacts/win-x64'
+          Copy-Item LICENSE, MEMORY_FIX.md, BASELINE_REVIEW.md $destination
+          $binary = Get-Item "$destination/OppoPodsManager.exe"
+          if ($binary.VersionInfo.FileVersion -ne '2.0.1.0') { throw 'Unexpected binary version' }
+          $manifest = [ordered]@{
+            version = '2.0.1'
+            source_commit = $env:GITHUB_SHA
+            build = 'Windows x64 NativeAOT; original Release configuration'
+            workflow_run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            regression_tests = 30
+            hardware_verification = 'pending'
+            file_version = $binary.VersionInfo.FileVersion
+            product_version = $binary.VersionInfo.ProductVersion
+            exe_sha256 = (Get-FileHash $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $manifest | ConvertTo-Json | Set-Content "$destination/build-manifest.json" -Encoding utf8
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: OppoPodsManager-2.0.1-win-x64-nativeaot
+          path: artifacts/win-x64/
+          if-no-files-found: error
+          retention-days: 7
