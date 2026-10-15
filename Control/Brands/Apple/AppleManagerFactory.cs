@@ -13,6 +13,9 @@ public sealed class AppleManagerFactory : IBrandManagerFactory
     // AirPods 无 RFCOMM 服务 UUID；用 Guid.Empty 占位，匹配由 IsCandidateName/传输决定。
     public Guid ServiceId => Guid.Empty;
 
+    public bool SupportsTransport(string transport)
+        => string.Equals(transport, TransportNames.BleAdvertisement, StringComparison.OrdinalIgnoreCase);
+
     public bool IsCandidateName(string? deviceName)
         => !string.IsNullOrWhiteSpace(deviceName)
             && deviceName.Contains("airpods", StringComparison.OrdinalIgnoreCase);
@@ -32,7 +35,7 @@ public sealed class AppleManagerFactory : IBrandManagerFactory
         var manager = new AppleManager();
         try
         {
-            await manager.StartSessionAsync(plan.Candidate.DisplayName, provider, cancellationToken);
+            await manager.StartSessionAsync(plan.Candidate.DisplayName, provider, cancellationToken, connection);
             return manager;
         }
         catch

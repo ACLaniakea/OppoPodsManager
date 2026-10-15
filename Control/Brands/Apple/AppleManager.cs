@@ -16,6 +16,7 @@ internal sealed class AppleManager : IBrandManager
 {
     private readonly BusinessState _state = new();
     private IAppleAdvertisementProvider? _provider;
+    private IRawConnection? _ownedConnection;
     private string? _deviceName;
     private EventHandler<byte[]>? _onUpdated;
     private bool _disposed;
@@ -41,14 +42,17 @@ internal sealed class AppleManager : IBrandManager
         // 状态来自广播事件，不依赖轮询。交互态变化无需调整。
     }
 
-    public Task DisconnectAsync()
+    public async Task DisconnectAsync()
     {
         if (_provider is not null && _onUpdated is not null)
             _provider.AdvertisementUpdated -= _onUpdated;
         _provider = null;
         _onUpdated = null;
+        var connection = _ownedConnection;
+        _ownedConnection = null;
+        if (connection is not null)
+            await connection.DisposeAsync();
         _state.Reset();
-        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()
@@ -108,11 +112,13 @@ internal sealed class AppleManager : IBrandManager
         => new([], []);
 
     // ---- 会话建立 ----
-    public async Task StartSessionAsync(string deviceName, IAppleAdvertisementProvider provider, CancellationToken cancellationToken)
+    public async Task StartSessionAsync(string deviceName, IAppleAdvertisementProvider provider, CancellationToken cancellationToken,
+        IRawConnection? ownedConnection = null)
     {
         await DisconnectAsync();
         _deviceName = deviceName;
         _provider = provider;
+        _ownedConnection = ownedConnection;
         _onUpdated = OnAdvertisementUpdated;
         provider.AdvertisementUpdated += _onUpdated;
 

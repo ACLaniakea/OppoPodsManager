@@ -27,7 +27,7 @@ public sealed class WindowsRfcommConnection : IRawConnection
     private const int FionBio = unchecked((int)0x8004667E);
     private const int SoError = 0x1007;            // SO_ERROR
     private const int NsBth = 16;                  // NS_BTH：蓝牙命名空间
-    private const uint LupFlushCache = 0x1000;     // 强制重新向远端设备查询 SDP
+    private const uint LupFlushCache = 0x2000;     // LUP_FLUSHCACHE (0x1000 is LUP_FLUSHPREVIOUS).
     private const uint LupReturnAll = 0x0FF0;      // 返回名称/类型/地址/BLOB 等全部字段（含 CSADDR_INFO）
     private const int ScanTimeoutMicros = 150_000; // 通道扫描时单次连接预算（150ms）
     private static readonly IntPtr InvalidSocket = new(-1);
@@ -343,19 +343,25 @@ public sealed class WindowsRfcommConnection : IRawConnection
             var bufSize = 4096;
             buf = Marshal.AllocHGlobal(bufSize);
             var csSize = Marshal.SizeOf<CsAddrInfo>();
-            while (true)
+            for (var record = 0; record < 256; record++)
             {
                 var size = bufSize;
+                Marshal.StructureToPtr(new WsaQuerySet { DwSize = Marshal.SizeOf<WsaQuerySet>() }, buf, false);
                 if (WSALookupServiceNext(hLookup, lookupFlags, ref size, buf) != 0)
                 {
                     var err = WSAGetLastError();
-                    if (err is 10108 or 10110) // WSA_E_NO_MORE / WSAENOMORE：没有更多结果
+                    if (err is 10102 or 10110) // WSAENOMORE / WSA_E_NO_MORE
                         break;
-                    if (err == 10040) // WSAEFAULT：缓冲区不足，扩容后重试
+                    if (err == 10014) // WSAEFAULT: required buffer size is returned in size.
                     {
-                        bufSize = Math.Max(size, bufSize * 2);
+                        // A corrupt/provider-supplied length must never turn discovery
+                        // into a multi-gigabyte allocation or an endless retry loop.
+                        if (!TryGetNextLookupBufferSize(bufSize, size, out var nextSize))
+                            break;
+                        var replacement = Marshal.AllocHGlobal(nextSize);
                         Marshal.FreeHGlobal(buf);
-                        buf = Marshal.AllocHGlobal(bufSize);
+                        buf = replacement;
+                        bufSize = nextSize;
                         continue;
                     }
                     ApplicationLog.Current?.Debug("Bluetooth",
@@ -365,14 +371,18 @@ public sealed class WindowsRfcommConnection : IRawConnection
 
                 var result = Marshal.PtrToStructure<WsaQuerySet>(buf);
                 var csaBase = result.LpcsaBuffer;
+                if (result.DwNumberOfCsAddrs < 0 || result.DwNumberOfCsAddrs > bufSize / csSize
+                    || !IsInsideLookupBuffer(buf, bufSize, csaBase, result.DwNumberOfCsAddrs * csSize))
+                    break;
                 for (var i = 0; i < result.DwNumberOfCsAddrs && csaBase != IntPtr.Zero; i++)
                 {
                     var cs = Marshal.PtrToStructure<CsAddrInfo>(csaBase + i * csSize);
                     var sockaddrPtr = cs.RemoteAddr.LpSockaddr;
-                    if (sockaddrPtr == IntPtr.Zero)
+                    if (cs.RemoteAddr.ISockaddrLength < Marshal.SizeOf<SockAddrBth>()
+                        || !IsInsideLookupBuffer(buf, bufSize, sockaddrPtr, Marshal.SizeOf<SockAddrBth>()))
                         continue;
                     var sa = Marshal.PtrToStructure<SockAddrBth>(sockaddrPtr);
-                    if (sa.Port is > 0 and <= 30)
+                    if (sa.Port is > 0 and <= 30 && !channels.Contains(sa.Port))
                         channels.Add((uint)sa.Port);
                 }
             }
@@ -393,6 +403,25 @@ public sealed class WindowsRfcommConnection : IRawConnection
             if (qsPtr != IntPtr.Zero) Marshal.FreeHGlobal(qsPtr);
         }
         return channels;
+    }
+
+    internal static bool TryGetNextLookupBufferSize(int current, int required, out int next)
+    {
+        const int maximumResultBytes = 1024 * 1024;
+        next = current;
+        if (current <= 0 || current >= maximumResultBytes || required <= current || required > maximumResultBytes)
+            return false;
+        next = Math.Min(maximumResultBytes, Math.Max(required, current * 2));
+        return true;
+    }
+
+    private static bool IsInsideLookupBuffer(IntPtr buffer, int size, IntPtr pointer, int bytes)
+    {
+        if (bytes == 0)
+            return true;
+        var start = (ulong)buffer.ToInt64();
+        var address = (ulong)pointer.ToInt64();
+        return bytes > 0 && bytes <= size && address >= start && address - start <= (ulong)(size - bytes);
     }
 
     private static IntPtr TryConnect(ulong address, Guid serviceId, uint port, int timeoutMicros, out int wsaError)
@@ -487,7 +516,7 @@ public sealed class WindowsRfcommConnection : IRawConnection
         }
     }
 
-    // 原生 SOCKADDR_BTH（x64 自然对齐，40 字节；port 偏移 32）。
+    // ws2bth.h uses byte packing: SOCKADDR_BTH is 30 bytes, with port at offset 26.
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct SockAddrBth
     {
@@ -497,7 +526,7 @@ public sealed class WindowsRfcommConnection : IRawConnection
         public uint Port;
     }
 
-    // 原生 fd_set：fd_count + 最多 64 个 SOCKET 的数组（共 516 字节）。
+    // x64 fd_set: fd_count + alignment padding + 64 SOCKET values (520 bytes).
     // 旧版只留了一个指针（12 字节），select() 会越界写入后续堆内存，导致 0xc0000374 堆损坏。
     [StructLayout(LayoutKind.Sequential)]
     private struct FdSet
@@ -510,13 +539,15 @@ public sealed class WindowsRfcommConnection : IRawConnection
     [StructLayout(LayoutKind.Sequential)]
     private struct TimeVal { public int Seconds; public int Microseconds; }
 
-    // 原生 WSAQUERYSETW（x64 自然对齐，112 字节），仅含指针/整型，可直接按值封送。
+    // WSAQUERYSETW is 120 bytes on x64. lpVersion is required in the layout even
+    // when null: omitting it shifts every following field, including lpBlob, out of place.
     [StructLayout(LayoutKind.Sequential)]
     private struct WsaQuerySet
     {
         public int DwSize;
         public IntPtr LpszServiceInstanceName;
         public IntPtr LpServiceClassId;
+        public IntPtr LpVersion;
         public IntPtr LpszComment;
         public int DwNameSpace;
         public IntPtr LpNsProviderId;
@@ -558,7 +589,7 @@ public sealed class WindowsRfcommConnection : IRawConnection
     [DllImport("ws2_32.dll", SetLastError = true)] private static extern int ioctlsocket(IntPtr socket, int command, ref uint argument);
     [DllImport("ws2_32.dll", SetLastError = true)] private static extern int select(int ignored, IntPtr read, ref FdSet write, ref FdSet errors, ref TimeVal timeout);
     [DllImport("ws2_32.dll")] private static extern int WSAGetLastError();
-    [DllImport("ws2_32.dll", SetLastError = true)] private static extern int WSALookupServiceBegin(IntPtr querySet, uint flags, out IntPtr handle);
-    [DllImport("ws2_32.dll", SetLastError = true)] private static extern int WSALookupServiceNext(IntPtr handle, uint flags, ref int bufferLength, IntPtr results);
+    [DllImport("ws2_32.dll", EntryPoint = "WSALookupServiceBeginW", ExactSpelling = true, SetLastError = true)] private static extern int WSALookupServiceBegin(IntPtr querySet, uint flags, out IntPtr handle);
+    [DllImport("ws2_32.dll", EntryPoint = "WSALookupServiceNextW", ExactSpelling = true, SetLastError = true)] private static extern int WSALookupServiceNext(IntPtr handle, uint flags, ref int bufferLength, IntPtr results);
     [DllImport("ws2_32.dll", SetLastError = true)] private static extern int WSALookupServiceEnd(IntPtr handle);
 }

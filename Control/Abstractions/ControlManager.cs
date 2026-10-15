@@ -132,6 +132,7 @@ public sealed class ControlManager : IAsyncDisposable
             .Where(plan => !plan.InfoIncomplete)
             .Where(plan => !_confirmedDeviceIds.Contains(plan.Candidate.StableId))
             .Where(plan => !_probingDeviceIds.Contains(plan.Candidate.StableId))
+            .OrderBy(plan => !CanAutoConnect(plan))
             .ToArray();
         foreach (var plan in candidatesToConfirm)
             await ConfirmDeviceAsync(plan, cancellationToken);
@@ -145,6 +146,7 @@ public sealed class ControlManager : IAsyncDisposable
             lock (_availableDevicesLock)
                 replacement = _availableDevices.Values.FirstOrDefault(plan =>
                     !plan.InfoIncomplete
+                    && CanAutoConnect(plan)
                     && _confirmedDeviceIds.Contains(plan.Candidate.StableId)
                     && _managerFactories.ContainsKey(plan.Brand));
             if (replacement is not null)
@@ -239,6 +241,7 @@ public sealed class ControlManager : IAsyncDisposable
             // 同 MAC 已确认过品牌时，将其置顶优先，跳过全品牌探测，减少首次识别等待。
             var cachedBrand = plan.Candidate.BluetoothAddress is { } mac ? _settings?.GetBrandForMac(mac) : null;
             var factories = _managerFactories.Values
+                .Where(factory => factory.SupportsTransport(plan.Options.Transport))
                 .OrderByDescending(factory => cachedBrand is not null
                     && string.Equals(factory.Brand, cachedBrand, StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(factory => factory.IsCandidateName(plan.Candidate.DisplayName))
@@ -287,6 +290,11 @@ public sealed class ControlManager : IAsyncDisposable
     private static bool IsFallbackDeviceName(string displayName)
         => string.IsNullOrWhiteSpace(displayName)
             || displayName.StartsWith("耳机 ", StringComparison.Ordinal);
+
+    // Receiving a proximity broadcast proves visibility, not ownership or an OS
+    // connection. Nearby AirPods remain selectable, but require an explicit choice.
+    private static bool CanAutoConnect(DeviceConnectionPlan plan)
+        => !string.Equals(plan.Options.Transport, TransportNames.BleAdvertisement, StringComparison.OrdinalIgnoreCase);
     // 按计划保留的稳定顺序取得可验证品牌，避免监控刷新时重排连接尝试。
     // ignoreProbeFailures=false（Discovery 确认循环）时跳过负结果缓存中未过期的品牌；
     // true（用户/自动连接）时总是全品牌重试。
@@ -308,7 +316,9 @@ public sealed class ControlManager : IAsyncDisposable
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(brand => failedBrands is null || !failedBrands.Contains(brand))
             .Select(brand => _managerFactories.TryGetValue(brand, out var factory) ? factory : null)
-            .Where(factory => factory is not null && (isBleAdvertisement || factory.ServiceId != Guid.Empty))
+            .Where(factory => factory is not null
+                && factory.SupportsTransport(plan.Options.Transport)
+                && (isBleAdvertisement || factory.ServiceId != Guid.Empty))
             .Cast<IBrandManagerFactory>()
             .ToArray();
     }
@@ -358,7 +368,7 @@ public sealed class ControlManager : IAsyncDisposable
             // 协议验证成功：清除该设备的品牌探测负结果缓存。
             _brandProbeFailures.Remove(plan.Candidate.StableId);
         }
-        if (!string.IsNullOrWhiteSpace(cacheMac) && !string.IsNullOrWhiteSpace(cacheBrand))
+        if (CanAutoConnect(plan) && !string.IsNullOrWhiteSpace(cacheMac) && !string.IsNullOrWhiteSpace(cacheBrand))
             _settings?.RecordBrandForMac(cacheMac, cacheBrand);
     }
     private IReadOnlyList<DeviceConnectionOption> GetAvailableDeviceOptions()
@@ -373,6 +383,13 @@ public sealed class ControlManager : IAsyncDisposable
     }
     private async Task ConfirmDeviceAsync(DeviceConnectionPlan plan, CancellationToken cancellationToken)
     {
+        if (!CanAutoConnect(plan))
+        {
+            // The discovery source has already validated the advertisement. Do not
+            // open a pretend connection or make a stranger's broadcast the active session.
+            MarkConfirmed(plan);
+            return;
+        }
         lock (_availableDevicesLock)
         {
             if (_confirmedDeviceIds.Contains(plan.Candidate.StableId)
@@ -428,7 +445,7 @@ public sealed class ControlManager : IAsyncDisposable
                         // 依据真机日志：OPPO/vivo 在“设备被发现”后会先确认协议再自动连接，导致同设备
                         // 被完整连接两次（OPPO 因此多耗约 7 秒，vivo 则因确认会话被提前 Dispose 出现
                         // ObjectDisposedException）。复用后自动连接循环看到 ActiveManager 非空会直接返回。
-                        if (_activeManager is null && _activeDeviceId is null)
+                        if (_activeManager is null && _activeDeviceId is null && _manualDisconnectDeviceId is null)
                         {
                             _activeDeviceId = candidatePlan.Candidate.StableId;
                             MarkConfirmed(candidatePlan);
@@ -588,6 +605,7 @@ public sealed class ControlManager : IAsyncDisposable
             lock (_availableDevicesLock)
                 plan = _availableDevices.Values.FirstOrDefault(candidate =>
                     !candidate.InfoIncomplete
+                    && CanAutoConnect(candidate)
                     && _confirmedDeviceIds.Contains(candidate.Candidate.StableId)
                     && _managerFactories.ContainsKey(candidate.Brand));
             if (plan is null || ActiveManager is not null)

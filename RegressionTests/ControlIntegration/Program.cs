@@ -29,7 +29,9 @@ internal static class Program
             Console.WriteLine("PASS Actual ControlManager rejects out-of-order generations");
             await CancelWhileWaiting().WaitAsync(TimeSpan.FromSeconds(10));
             Console.WriteLine("PASS Actual ControlManager cancels while discovery gate is occupied");
-            Console.WriteLine("3/3 passed");
+            await SelectionRegression.RunAsync().WaitAsync(TimeSpan.FromSeconds(20));
+            NativeLayoutRegression.Run();
+            Console.WriteLine("11/11 passed");
             return 0;
         }
         catch (Exception exception) { Console.WriteLine(exception); return 1; }
