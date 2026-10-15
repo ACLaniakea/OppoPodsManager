@@ -30,6 +30,7 @@ public sealed class TrayIconController : IDisposable
     private StatusWindow? _miniWindow;
     private string _menuSignature = "";
     private bool _disposed;
+    private readonly Action _hideMainWindow;
 
     public TrayIconController(
         IClassicDesktopStyleApplicationLifetime desktop,
@@ -38,7 +39,8 @@ public sealed class TrayIconController : IDisposable
         CommandDispatcher commandDispatcher,
         SettingsManager settings,
         ApplicationLog log,
-        Func<Window?> mainWindow)
+        Func<Window?> mainWindow,
+        Action hideMainWindow)
     {
         _desktop = desktop;
         _frontendState = frontendState;
@@ -47,6 +49,7 @@ public sealed class TrayIconController : IDisposable
         _commandDispatcher = commandDispatcher;
         _settings = settings;
         _mainWindow = mainWindow;
+        _hideMainWindow = hideMainWindow;
         _icon = new Avalonia.Controls.TrayIcon { Icon = LoadIcon() };
         RefreshMenu(_frontendState.Snapshot, force: true);
         _icon.Clicked += OnClicked;
@@ -180,6 +183,7 @@ public sealed class TrayIconController : IDisposable
             return;
         }
 
+        _hideMainWindow();
         _miniWindow ??= CreateMiniWindow();
         _miniWindow.Show();
         _miniWindow.Activate();
@@ -214,8 +218,9 @@ public sealed class TrayIconController : IDisposable
 
     private IBrandManager? ActiveDeviceManager => _controlManager.ActiveManager;
 
-    private void ShowMainWindow()
+    public void ShowMainWindow()
     {
+        if (_disposed) return;
         ApplicationLog.Current?.Info("Tray", "托盘请求显示主窗口。");
         _miniWindow?.Hide();
         var window = _mainWindow();

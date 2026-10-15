@@ -1,4 +1,4 @@
-﻿using OppoPodsManager.Control.Brands.Oppo.Models;
+using OppoPodsManager.Control.Brands.Oppo.Models;
 using OppoPodsManager.Control.Core.Models;
 
 namespace OppoPodsManager.Assets.Localization;
@@ -16,6 +16,7 @@ internal static class DeviceText
         {
             NoiseMode.NoiseCancellation => "AncMode_NoiseCancellation",
             NoiseMode.Transparency => "AncMode_Transparency",
+            NoiseMode.VocalTransparency => "Anc_VocalTransparency",
             NoiseMode.Smart => "AncMode_Adaptive",
             NoiseMode.Adaptive => "AncMode_Adaptive",
             NoiseMode.Light => "Anc_SubLight",

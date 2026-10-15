@@ -58,14 +58,6 @@ public partial class EqView : PageView
 
     public override void ApplySnapshot(BusinessSnapshot snapshot)
     {
-        var active = ControlManager?.ActiveManager;
-        var hint = !snapshot.IsConnected || active is null ? "Eq_UnavailableDisconnected"
-            : snapshot.Game.SoundType is > 0 && active.Capability.GameSoundBlocksEqualizer
-                ? "Eq_UnavailableConflict"
-            : active.Presentation.ControlEnabledStates.TryGetValue("equalizer", out var enabled) && !enabled
-                ? "Eq_UnavailableUnsupported" : null;
-        EqAvailabilityHint.IsVisible = hint is not null;
-        EqAvailabilityHint.Text = hint is null ? "" : TranslationCatalog.Get(hint);
         if (_nextEqEditing)
             return;
 

@@ -1,4 +1,4 @@
-﻿using OppoPodsManager.Control.Brands.Oppo.Managers;
+using OppoPodsManager.Control.Brands.Oppo.Managers;
 using OppoPodsManager.Control.Core.Transport;
 using OppoPodsManager.Control.Brands.Oppo.Models;
 using OppoPodsManager.Control.Core.Models;
@@ -33,6 +33,7 @@ public sealed class NoiseCancellation : IDisposable
         [(0x20, 0)] = NoiseMode.Medium,
         [(0x10, 0)] = NoiseMode.Deep,
         [(0, 1)] = NoiseMode.Transparency,
+        [(0, 2)] = NoiseMode.VocalTransparency,
         [(4, 0)] = NoiseMode.Transparency,
         [(0, 8)] = NoiseMode.Adaptive,
     };
@@ -58,6 +59,8 @@ public sealed class NoiseCancellation : IDisposable
         if (!AncReverse.TryGetValue((v1, v2), out var mode))
             return;
 
+        OppoPodsManager.Control.Subsystems.Logging.ApplicationLog.Current?.Debug("Noise.Protocol",
+            $"解析降噪回报：kind={kind}，value={v1:X2}{v2:X2}，mode={mode}。");
         if (kind == 4)
             _state.SetNoise(new NoiseSnapshot(NoiseMode.Smart, mode));
         else
@@ -109,6 +112,7 @@ public sealed class NoiseCancellation : IDisposable
     {
         NoiseMode.Off => "Off",
         NoiseMode.Transparency => "Transparency",
+        NoiseMode.VocalTransparency => "VocalTransparency",
         NoiseMode.Smart => "Smart",
         NoiseMode.NoiseCancellation => "NC",
         NoiseMode.Light => "Light",
@@ -126,6 +130,7 @@ public sealed class NoiseCancellation : IDisposable
             "Off" => NoiseMode.Off,
             "NC" or "NoiseCancellation" => NoiseMode.NoiseCancellation,
             "Transparency" => NoiseMode.Transparency,
+            "VocalTransparency" => NoiseMode.VocalTransparency,
             "Smart" => NoiseMode.Smart,
             "Adaptive" => NoiseMode.Adaptive,
             "Light" => NoiseMode.Light,

@@ -97,7 +97,9 @@ public sealed partial class App : Application
                 _commandDispatcher,
                 _settings,
                 _log,
-                GetOrCreateMainWindow);
+                GetOrCreateMainWindow,
+                () => _mainWindow?.Hide());
+            Program.EnableActivation(() => _trayIcon?.ShowMainWindow());
             desktop.Exit += async (_, _) =>
             {
                 _startupCancellation?.Cancel();

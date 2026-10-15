@@ -171,15 +171,15 @@ public sealed class ControlManager : IAsyncDisposable
         {
         }
     }
-    // Windows 与原项目一致：连接失败后不按固定间隔盲重试，只等待下一次设备状态变化或用户请求；
-    // 循环同时以 5 秒周期醒来做会话活性检查（看门狗）。发送后持续无接收的死会话会被拆除并
-    // 清空负结果缓存、触发重新探测——这是“会话已建立但设备永不再响应”（误锁/被手机抢连/
-    // 耳机异常休眠）的最后防线。空闲但健康的会话（无发送）不会被误判。
+    // Retry a missing/failed session with bounded backoff even when Windows emits
+    // no further device event. The same loop owns retries; no per-tick tasks pile up.
     private async Task RunReconnectLoopAsync()
     {
-        try
+        var failures = 0;
+        long retryAfter = 0;
+        while (Volatile.Read(ref _disposed) == 0)
         {
-            while (!Volatile.Read(ref _disposed).Equals(1))
+            try
             {
                 var signaled = await _reconnectWake.WaitAsync(WatchdogInterval, _lifetimeCancellation.Token);
                 while (_reconnectWake.CurrentCount > 0)
@@ -187,30 +187,48 @@ public sealed class ControlManager : IAsyncDisposable
                 if (ActiveManager is { } manager && IsSessionDead(manager))
                 {
                     var deadDeviceId = _activeDeviceId;
-                    ApplicationLog.Current?.Info("Control",
-                        $"会话看门狗：活动会话长时间无协议响应，已拆除并触发重新探测。device={deadDeviceId}，manager={manager.GetType().Name}。");
+                    ApplicationLog.Current?.Info("Control", $"会话长时间无响应，重新探测：device={deadDeviceId}。");
                     await ClearActiveManagerAsync();
-                    if (deadDeviceId is not null)
-                        ClearProbeFailures(deadDeviceId);
-                    SignalReconnect("会话活性超时");
+                    if (deadDeviceId is not null) ClearProbeFailures(deadDeviceId);
+                    signaled = true;
+                }
+                if (ActiveManager is not null)
+                {
+                    failures = 0;
+                    retryAfter = 0;
                     continue;
                 }
-                // 仅由真实信号（设备变化/用户请求/看门狗拆除）驱动自动连接，周期性醒来只做看门狗检查。
-                if (!signaled)
-                    continue;
-                if (ActiveManager is not null || _manualDisconnectDeviceId is not null)
-                    continue;
-                await ConnectFirstAvailableAsync(_lifetimeCancellation.Token);
+                if (_manualDisconnectDeviceId is not null) continue;
+                if (!signaled && Environment.TickCount64 < retryAfter) continue;
+                if (await ConnectFirstAvailableAsync(_lifetimeCancellation.Token))
+                {
+                    failures = 0;
+                    retryAfter = 0;
+                }
+                else
+                {
+                    failures = Math.Min(failures + 1, 4);
+                    retryAfter = Environment.TickCount64 + RetryDelayMilliseconds(failures);
+                    ApplicationLog.Current?.Debug("Control", $"暂未建立会话，稍后重新扫描：delayMs={RetryDelayMilliseconds(failures)}。");
+                }
+            }
+            catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested) { return; }
+            catch (Exception exception)
+            {
+                // One scanner/driver failure must not permanently kill recovery.
+                retryAfter = Environment.TickCount64 + 30_000;
+                ApplicationLog.Current?.Error("Control", "本轮自动恢复失败，将继续等待重试。", exception);
             }
         }
-        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            ApplicationLog.Current?.Error("Control", "自动连接循环异常终止。", exception);
-        }
     }
+
+    private static int RetryDelayMilliseconds(int failures) => failures switch
+    {
+        <= 1 => 5_000,
+        2 => 15_000,
+        3 => 30_000,
+        _ => 60_000
+    };
 
     // 死会话判定：最后一次活动是发送（存在未得到响应的轮询），最后一次发送已超过单请求
     // 4s 超时窗口仍无任何接收，且距最后接收已超过 SessionDeadAfter。不发送的空闲会话
@@ -461,6 +479,10 @@ public sealed class ControlManager : IAsyncDisposable
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
+                        if (manager is not null)
+                            await manager.DisposeAsync();
+                        else if (connection is not null)
+                            await connection.DisposeAsync();
                         throw;
                     }
                     catch (OperationCanceledException)
@@ -606,13 +628,12 @@ public sealed class ControlManager : IAsyncDisposable
                 plan = _availableDevices.Values.FirstOrDefault(candidate =>
                     !candidate.InfoIncomplete
                     && CanAutoConnect(candidate)
-                    && _confirmedDeviceIds.Contains(candidate.Candidate.StableId)
                     && _managerFactories.ContainsKey(candidate.Brand));
-            if (plan is null || ActiveManager is not null)
+            if (ActiveManager is not null)
+                return true;
+            if (plan is null)
             {
                 ApplicationLog.Current?.Info("Control", $"自动连接结束：可用设备={devices.Count}，已支持设备={plan is not null}，已有会话={ActiveManager is not null}。");
-                if (plan is null)
-                    await ClearActiveManagerAsync();
                 return false;
             }
             return await ConnectAsync(plan.Candidate.StableId, cancellationToken);

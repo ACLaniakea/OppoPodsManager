@@ -29,11 +29,11 @@ internal static class Program
             Console.WriteLine("PASS Actual ControlManager rejects out-of-order generations");
             await CancelWhileWaiting().WaitAsync(TimeSpan.FromSeconds(10));
             Console.WriteLine("PASS Actual ControlManager cancels while discovery gate is occupied");
-            await SelectionRegression.RunAsync().WaitAsync(TimeSpan.FromSeconds(20));
+            await SelectionRegression.RunAsync().WaitAsync(TimeSpan.FromSeconds(45));
             NativeLayoutRegression.Run();
             CompatibilityRegression.Run();
             await NoisePresentationRegression.RunAsync();
-            Console.WriteLine("17/17 passed");
+            Console.WriteLine("24/24 passed");
             return 0;
         }
         catch (Exception exception) { Console.WriteLine(exception); return 1; }

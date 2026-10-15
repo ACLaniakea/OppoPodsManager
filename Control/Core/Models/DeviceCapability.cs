@@ -1,4 +1,4 @@
-﻿namespace OppoPodsManager.Control.Core.Models;
+namespace OppoPodsManager.Control.Core.Models;
 using OppoPodsManager.Control.Core.Transport;
 public sealed record DeviceCapability(
     string ProductId,
@@ -70,7 +70,8 @@ public enum NoiseMode
     Light,
     Medium,
     Deep,
-    Adaptive
+    Adaptive,
+    VocalTransparency
 }
 // 表示原项目中的降噪父模式及其可选子模式。
 public sealed record NoiseModeGroup(NoiseMode Parent, byte ParentProtocolIndex, IReadOnlyList<NoiseModeOption> Children)

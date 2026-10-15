@@ -20,7 +20,7 @@ internal static class Program
     private static void Check(bool condition, string message)
     { if (!Baseline && !condition) throw new InvalidOperationException(message); }
     private static object? Invoke(object target, string name, params object?[] args)
-        => target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(target, args);
+        => target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)!.Invoke(target, args);
     private static void Set(object target, Type owner, string name, object value)
         => owner.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(target, value);
     private static void Close(MainWindow window)
@@ -43,14 +43,15 @@ internal static class Program
             var errors = new List<Exception>();
             foreach (var test in new Action[] { WindowLifetime, Sidebar, LogRefresh })
                 try { test(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
-            if (!Baseline) try { Hints(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
+            if (!Baseline) try { NoSupplementalHints(); ExclusiveWindows(); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
             if (!Baseline)
                 foreach (var mini in new[] { false, true })
                     foreach (var fail in new[] { false, true })
-                        try { NoiseSelection(mini, fail); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
+                        foreach (var grouped in new[] { false, true })
+                        try { NoiseSelection(mini, fail, grouped); } catch (Exception error) { errors.Add(error); Console.WriteLine(error); }
             Console.WriteLine("METRICS " + JsonSerializer.Serialize(Metrics));
             if (errors.Count != 0) return 1;
-            Console.WriteLine(Baseline ? "Baseline measured" : "12/12 UI regression checks passed");
+            Console.WriteLine(Baseline ? "Baseline measured" : "13/13 UI regression checks passed");
             return 0;
         }
         catch (Exception error) { Console.WriteLine(error); return 1; }
@@ -137,7 +138,7 @@ internal static class Program
         finally { Console.SetError(previous); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         Console.WriteLine("MEASURED Full log buffer freshness and idle refresh allocation");
     }
-    private static void NoiseSelection(bool mini, bool fail)
+    private static void NoiseSelection(bool mini, bool fail, bool grouped)
     {
         var directory = Path.Combine(Path.GetTempPath(), "oppo-noise-test-" + Guid.NewGuid().ToString("N"));
         var previousError = Console.Error;
@@ -146,7 +147,14 @@ internal static class Program
             using var log = new ApplicationLog(directory);
             Console.SetError(TextWriter.Null);
             var (control, proxy) = Control();
-            proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Off, null) };
+            var initial = grouped ? NoiseMode.Smart : NoiseMode.Off;
+            proxy.Snapshot = proxy.Snapshot with { Noise = new(initial, null) };
+            if (grouped)
+            {
+                var capability = new OppoPodsManager.Control.Brands.Oppo.Models.CapabilityLoader(OppoPodsManager.Assets.Oplus.DeviceModelData.LoadCatalog())
+                    .Load("067410", null, new HashSet<ushort> { 0x010C, 0x0404 });
+                proxy.NoiseOptions = OppoPodsManager.Control.Brands.Oppo.Features.NoiseCancellation.BuildOptions(capability);
+            }
             proxy.NoiseCommand = new();
             var frontend = new FrontendState(); frontend.Publish(proxy.Snapshot);
             var dispatcher = new CommandDispatcher(control, log);
@@ -161,7 +169,7 @@ internal static class Program
             try
             {
                 var options = proxy.NoiseOptions;
-                Invoke(view, "SwitchAncMain", options[2]); // Off -> transparency.
+                Invoke(view, "SwitchAncMain", options.Single(option => option.Key == "Transparency"));
                 var hint = view.FindControl<TextBlock>("AncRealtimeHint")!;
                 var row = view.FindControl<Grid>("AncMainRow")!;
                 string Selected() => (string)view.GetType().GetField("_ancMain", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
@@ -175,15 +183,15 @@ internal static class Program
                     proxy.Snapshot = proxy.Snapshot with { Revision = i + 1, LeftBattery = new((byte)i, false) };
                     Apply();
                 }
-                Check(Selected() == "Transparency" && hint.IsVisible && !row.IsEnabled,
+                Check(Selected() == "Transparency" && !hint.IsVisible && !row.IsEnabled && proxy.LastNoiseKey == "Transparency",
                     "Old battery notifications made the pending noise selection jump back.");
-                Invoke(view, "SwitchAncMain", options[1]);
+                Invoke(view, "SwitchAncMain", options.Single(option => option.Key == "NC"));
                 Check(proxy.NoiseCommandCount == 1, "A second ANC write raced the pending command.");
                 if (!fail) proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Transparency, null) };
                 proxy.NoiseCommand.SetResult(!fail);
                 // Execute captured UI continuations without starting any real application.
                 Dispatcher.UIThread.RunJobs();
-                Check(Selected() == (fail ? "Off" : "Transparency") && row.IsEnabled && !hint.IsVisible,
+                Check(Selected() == (fail ? (grouped ? "NC" : "Off") : "Transparency") && row.IsEnabled && !hint.IsVisible,
                     "Completed ANC command did not reconcile the real device state or release its pending UI.");
                 // Once finished, genuine physical-device changes must still update the display.
                 proxy.Snapshot = proxy.Snapshot with { Noise = new(NoiseMode.Deep, null) }; Apply();
@@ -201,32 +209,44 @@ internal static class Program
             Console.SetError(previousError);
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
         }
-        Console.WriteLine($"PASS {(mini ? "Mini" : "Main")} ANC stays selected during notifications; {(fail ? "failure restores device state" : "confirmation and physical changes update it")}");
+        Console.WriteLine($"PASS {(mini ? "Mini" : "Main")} {(grouped ? "real catalog" : "generic")} ANC stays selected during notifications; {(fail ? "failure restores device state" : "confirmation and physical changes update it")}");
     }
 
-    private static void Hints()
+    private static void NoSupplementalHints()
     {
-        var (control, proxy) = Control();
-        var eq = new EqView(); Set(eq, typeof(PageView), "ControlManager", control);
-        var state = proxy.Snapshot with { Game = new GameSnapshot(null, 3) };
-        eq.ApplySnapshot(state);
-        var hint = eq.FindControl<TextBlock>("EqAvailabilityHint")!;
-        Check(hint.IsVisible && hint.Text!.Contains("冲突") && !hint.Text.Contains("Enco"), "Generic conflict hint missing.");
-        eq.ApplySnapshot(state with { Game = new GameSnapshot(null, 0) });
-        Check(!hint.IsVisible, "Conflict hint did not clear.");
-        eq.ApplySnapshot(state with { IsConnected = false });
-        Check(hint.IsVisible && hint.Text!.Contains("连接"), "Disconnected hint missing.");
-        var home = new HomeView();
-        var options = new[] { new DeviceConnectionOption("connected", "Generic headset"), new DeviceConnectionOption("nearby", "AirPods", true) };
-        Invoke(home, "ApplyNextDevices", (object)options);
-        var nearby = home.FindControl<TextBlock>("NearbyDevicesHint")!;
-        var combo = home.FindControl<ComboBox>("CbDevice")!;
-        var text = (TextBlock)combo.ItemTemplate!.Build(options[1])!;
-        Check(nearby.IsVisible && text.Text!.Contains("附近广播") && combo.Items.Count == 2, "Nearby labels changed original choices.");
-        Invoke(home, "ApplyNextDevices", (object)new[] { options[0] });
-        Check(!nearby.IsVisible, "Nearby hint did not clear.");
-        Console.WriteLine("PASS Five existing generic conflict and nearby-device UI checks");
+        var home = new HomeView(); var eq = new EqView(); var window = new MainWindow();
+        try
+        {
+            Check(home.FindControl<TextBlock>("NearbyDevicesHint") is null
+                && eq.FindControl<TextBlock>("EqAvailabilityHint") is null
+                && window.FindControl<TextBlock>("DeviceListHiddenHint") is null,
+                "Removed supplemental footnotes still occupy the layout.");
+            var options = new[] { new DeviceConnectionOption("connected", "Generic headset"), new DeviceConnectionOption("nearby", "AirPods", true) };
+            Invoke(home, "ApplyNextDevices", (object)options);
+            Check(home.FindControl<ComboBox>("CbDevice")!.Items.Count == 2, "Removing hints changed the original selectable devices.");
+        }
+        finally { Close(window); home.MarkClosed(); }
+        Console.WriteLine("PASS Supplemental footnotes removed while device choices remain available");
     }
+    private static void ExclusiveWindows()
+    {
+        var main = new Window { Width = 400, Height = 300 };
+        var mini = new SmallWindow();
+        var tray = (OppoPodsManager.UI.Tray.TrayIconController)RuntimeHelpers.GetUninitializedObject(typeof(OppoPodsManager.UI.Tray.TrayIconController));
+        Set(tray, tray.GetType(), "_mainWindow", (Func<Window?>)(() => main));
+        Set(tray, tray.GetType(), "_hideMainWindow", (Action)(() => main.Hide()));
+        Set(tray, tray.GetType(), "_miniWindow", mini);
+        try
+        {
+            main.Show(); Invoke(tray, "ToggleMiniWindow");
+            Check(!main.IsVisible && mini.IsVisible, "Opening the mini window left the main window visible.");
+            for (var i = 0; i < 5; i++) Invoke(tray, "ShowMainWindow");
+            Check(main.IsVisible && !mini.IsVisible, "Repeated activation did not reuse the main window exclusively.");
+        }
+        finally { main.Close(); mini.Close(); Invoke(mini, "DisposeSukiWindow"); }
+        Console.WriteLine("PASS Main and mini windows are mutually exclusive and activation reuses the main window");
+    }
+
 }
 
 public sealed class TestApp : Application
@@ -242,15 +262,16 @@ public class UiManagerProxy : DispatchProxy
     public BusinessSnapshot Snapshot { get; set; } = new FrontendState().Snapshot with { DeviceName = "Generic headset", IsConnected = true };
     public TaskCompletionSource<bool>? NoiseCommand { get; set; }
     public int NoiseCommandCount { get; private set; }
-    public IReadOnlyList<NoiseOptionModel> NoiseOptions { get; } = [
+    public string? LastNoiseKey { get; private set; }
+    public IReadOnlyList<NoiseOptionModel> NoiseOptions { get; set; } = [
         new("Off", NoiseMode.Off, 1, []),
         new("NC", NoiseMode.NoiseCancellation, 2, [new("Smart", NoiseMode.Smart, 3, []), new("Deep", NoiseMode.Deep, 4, [])]),
         new("Transparency", NoiseMode.Transparency, 5, [])];
-    private Task<bool> SetNoise() { NoiseCommandCount++; return NoiseCommand?.Task ?? Task.FromResult(false); }
+    private Task<bool> SetNoise(string key) { LastNoiseKey = key; NoiseCommandCount++; return NoiseCommand?.Task ?? Task.FromResult(false); }
     private readonly DeviceCapability _capability = DeviceCapability.Unknown with { ModelName = "Generic headset", IsKnownModel = true, GameSoundMutexes = new HashSet<int> { 1 }, SupportedFeatures = new HashSet<string> { "custom-equalizer" } };
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
     {
-        "SetNoiseCancellationByKeyAsync" => SetNoise(),
+        "SetNoiseCancellationByKeyAsync" => SetNoise((string)args![0]!),
         "DisconnectAsync" => Task.CompletedTask,
         "DisposeAsync" => ValueTask.CompletedTask,
         "get_Capability" => _capability,

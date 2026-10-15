@@ -122,10 +122,8 @@
       Background="{DynamicResource GlassCardBg}">
    <Grid RowDefinitions="Auto,*,Auto">
     <StackPanel Grid.Row="0" Margin="16,8,12,4" Spacing="4">
-     <TextBlock Text="{l10n:Translate Sidebar_MultiDevice}" ToolTip.Tip="{l10n:Translate Sidebar_MultiDeviceHelp}" FontSize="12" Opacity="0.55"
+     <TextBlock Text="{l10n:Translate Sidebar_MultiDevice}" FontSize="12" Opacity="0.55"
         Margin="14,0,0,2" Foreground="{DynamicResource SukiText}"/>
-      <TextBlock Text="{l10n:Translate Sidebar_MultiDeviceHelp}" Margin="14,0,12,6"
-          FontSize="10" Opacity="0.55" TextWrapping="Wrap"/>
       <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
        <Grid>
         <ItemsControl x:Name="DeviceList" Margin="0,0,0,4">
@@ -140,8 +138,6 @@
             HorizontalAlignment="Center" TextAlignment="Center"/>
        </Grid>
       </ScrollViewer>
-      <TextBlock x:Name="DeviceListHiddenHint" IsVisible="False" Margin="14,0,12,6"
-          FontSize="10" Opacity="0.6" TextWrapping="Wrap"/>
     </StackPanel>
     <StackPanel Grid.Row="1" Margin="16,0,12,0" Spacing="4" VerticalAlignment="Top">
      <Button x:Name="NavHome" Content="{l10n:Translate Sidebar_NavHome}" Height="38" FontSize="13"

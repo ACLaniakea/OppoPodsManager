@@ -10,6 +10,7 @@ internal static class DeviceProfileLoader
     {
         "Off" => TranslationCatalog.Get("Anc_ModeOff"),
         "Transparency" => TranslationCatalog.Get("Anc_ModeTransparency"),
+        "VocalTransparency" => TranslationCatalog.Get("Anc_VocalTransparency"),
         "Adaptive" => TranslationCatalog.Get("Anc_ModeAdaptive"),
         "NC" => TranslationCatalog.Get("Anc_ModeNoiseCancellation"),
         "Smart" => TranslationCatalog.Get("Anc_SubSmart"),

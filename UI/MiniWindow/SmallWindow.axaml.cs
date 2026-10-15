@@ -207,8 +207,7 @@ public partial class SmallWindow : SukiWindow
                 if (!_ancCommandPending && snapshot.Noise.Mode != NoiseMode.Unknown)
                     SyncAncFromState(presentation.CurrentNoiseModeKey);
                 HighlightAnc();
-                AncRealtimeHint.Text = TranslationCatalog.Get("Anc_Switching");
-                AncRealtimeHint.IsVisible = _ancCommandPending;
+                AncRealtimeHint.IsVisible = false;
             }
         }
         else

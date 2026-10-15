@@ -25,6 +25,14 @@ internal static class SelectionRegression
         Console.WriteLine("PASS Connected-headset selection is generic across six names and RFCOMM/GATT transports");
         await RepeatedAppleDisposal();
         Console.WriteLine("PASS 1,000 Apple session cycles release all owned raw connections and subscriptions");
+        await CachedFailureRecovery();
+        Console.WriteLine("PASS Automatic retry bypasses stale negative brand results");
+        await LateStartupSnapshot();
+        Console.WriteLine("PASS Startup retries find a late device without a watcher event or restart");
+        await RespectManualDisconnect();
+        Console.WriteLine("PASS Retry loop preserves explicit user disconnection");
+        await CancelledProbeReleasesConnection();
+        Console.WriteLine("PASS Cancelled initialization releases the raw connection and permits a fresh attempt");
     }
 
     private static async Task NearbyIsManualOnly()
@@ -104,6 +112,45 @@ internal static class SelectionRegression
         }
     }
 
+    private static async Task Until(Func<bool> condition, int milliseconds = 8000)
+    {
+        using var timeout = new CancellationTokenSource(milliseconds);
+        while (!condition()) await Task.Delay(20, timeout.Token);
+    }
+    private static async Task CachedFailureRecovery()
+    {
+        await using var f = new Fixture(); f.Discovery.Devices = [Oppo]; f.Factory.FailuresRemaining = 1;
+        await f.Control.RefreshAvailableDevicesAsync(default);
+        Check(f.Control.ActiveManager is null && f.Classic.ActiveConnections == 0, "Failed initialization retained its connection.");
+        Check(await f.Control.ConnectFirstAvailableAsync(default), "Negative cache prevented a fresh automatic attempt.");
+        Check(f.Control.ActiveDeviceId == Oppo.StableId, "Recovery did not select the connected device.");
+    }
+    private static async Task LateStartupSnapshot()
+    {
+        await using var f = new Fixture();
+        f.Control.StartMonitoring();
+        await Until(() => f.Discovery.Scans > 0);
+        f.Discovery.Devices = [Oppo]; // Deliberately emit no DeviceWatcher event.
+        await Until(() => f.Control.ActiveDeviceId == Oppo.StableId);
+    }
+    private static async Task RespectManualDisconnect()
+    {
+        await using var f = new Fixture(); f.Discovery.Devices = [Oppo];
+        await f.Control.RefreshAvailableDevicesAsync(default);
+        await f.Control.DisconnectAsync(); var opened = f.Classic.OpenCount;
+        f.Control.StartMonitoring(); await Task.Delay(5500);
+        Check(f.Control.ActiveManager is null && f.Classic.OpenCount == opened, "Retry overrode an explicit disconnect.");
+    }
+    private static async Task CancelledProbeReleasesConnection()
+    {
+        await using var f = new Fixture(); f.Discovery.Devices = [Oppo];
+        using var cancelled = new CancellationTokenSource(); f.Factory.CancelOnCreate = cancelled;
+        try { await f.Control.RefreshAvailableDevicesAsync(cancelled.Token); throw new Exception("Expected cancellation."); }
+        catch (OperationCanceledException) when (cancelled.IsCancellationRequested) { }
+        Check(f.Classic.ActiveConnections == 0, "Cancelled probe leaked the RFCOMM connection.");
+        Check(await f.Control.ConnectFirstAvailableAsync(default), "A cancelled probe prevented recovery.");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public SnapshotDiscovery Discovery { get; } = new();
@@ -111,11 +158,13 @@ internal static class SelectionRegression
         public FakeConnectionFactory Classic { get; }
         public FrontendState State { get; } = new();
         public ControlManager Control { get; }
+        public OppoFactory Factory { get; }
         public Fixture(string brand = "OPPO", string nameToken = "OPPO", string transport = "rfcomm")
         {
             Classic = new(transport);
             var communication = new CommunicationController([Ble, Classic], [Discovery]);
-            Control = new ControlManager(State, new DeviceScanner(communication), [new AppleManagerFactory(), new OppoFactory(brand, nameToken)]);
+            Factory = new OppoFactory(brand, nameToken);
+            Control = new ControlManager(State, new DeviceScanner(communication), [new AppleManagerFactory(), Factory]);
         }
         public ValueTask DisposeAsync() => Control.DisposeAsync();
     }
@@ -123,7 +172,9 @@ internal static class SelectionRegression
     private sealed class SnapshotDiscovery : IDeviceDiscovery
     {
         public IReadOnlyList<DeviceCandidate> Devices { get; set; } = [];
-        public Task<IReadOnlyList<DeviceCandidate>> DiscoverAsync(CancellationToken token) => Task.FromResult(Devices);
+        public int Scans;
+        public Task<IReadOnlyList<DeviceCandidate>> DiscoverAsync(CancellationToken token)
+        { Interlocked.Increment(ref Scans); return Task.FromResult(Devices); }
     }
 
     private sealed class FakeConnectionFactory(string transport) : IConnectionFactory
@@ -168,11 +219,16 @@ internal static class SelectionRegression
 
     private sealed class OppoFactory(string brand, string nameToken) : IBrandManagerFactory
     {
+        public int FailuresRemaining;
+        public CancellationTokenSource? CancelOnCreate;
         public string Brand => brand;
         public Guid ServiceId => new("0000079a-d102-11e1-9b23-00025b00a5a5");
         public bool IsCandidateName(string? name) => name?.Contains(nameToken, StringComparison.Ordinal) == true;
         public Task<IBrandManager> CreateAsync(DeviceConnectionPlan plan, IRawConnection connection, CancellationToken token)
         {
+            if (CancelOnCreate is { } cancel)
+            { CancelOnCreate = null; cancel.Cancel(); throw new OperationCanceledException(token); }
+            if (FailuresRemaining-- > 0) throw new InvalidOperationException("Transient initialization failure.");
             var manager = DispatchProxy.Create<IBrandManager, TestManagerProxy>();
             ((TestManagerProxy)(object)manager).Connection = connection;
             ((TestManagerProxy)(object)manager).DeviceName = plan.Candidate.DisplayName;

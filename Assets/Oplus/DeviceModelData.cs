@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
 using OppoPodsManager.Control.Brands.Oppo.Models;
 using OppoPodsManager.Control.Core.Models;
@@ -190,7 +190,8 @@ public static class DeviceModelData
             3 => NoiseMode.Light,
             4 => NoiseMode.Deep,
             5 => NoiseMode.NoiseCancellation,
-            6 or 7 => NoiseMode.Smart,
+            6 => NoiseMode.VocalTransparency,
+            7 => NoiseMode.Smart,
             8 => NoiseMode.Medium,
             10 => NoiseMode.Adaptive,
             _ => NoiseMode.NoiseCancellation
@@ -200,24 +201,8 @@ public static class DeviceModelData
 
     private static void AddNoiseMode(JsonElement value, Dictionary<byte, NoiseMode> modes)
     {
-        if (!value.TryGetProperty("protocolIndex", out var index)
-            || !index.TryGetByte(out var protocolIndex)
-            || !value.TryGetProperty("modeType", out var type)
-            || !type.TryGetInt32(out var modeType))
-            return;
-
-        modes[protocolIndex] = modeType switch
-        {
-            1 => NoiseMode.Off,
-            2 => NoiseMode.Transparency,
-            3 => NoiseMode.Light,
-            4 => NoiseMode.Deep,
-            5 => NoiseMode.NoiseCancellation,
-            6 or 7 => NoiseMode.Smart,
-            8 => NoiseMode.Medium,
-            10 => NoiseMode.Adaptive,
-            _ => NoiseMode.NoiseCancellation
-        };
+        if (TryGetNoiseOption(value, out var option))
+            modes[option.ProtocolIndex] = option.Mode;
     }
 
     private static void AddEqualizerPresets(JsonElement function, List<string> presets)

@@ -11,8 +11,10 @@ internal static class Program
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    private static async Task<int> Main()
+    private static async Task<int> Main(string[] args)
     {
+        if (args.Length == 2 && args[0].StartsWith("--instance-"))
+            return SingleInstanceRegression.Child(args);
         (string Name, Func<Task> Run)[] tests =
         [
             ("Reject unrelated, truncated and oversized Apple advertisements", InvalidAdvertisements),
@@ -34,6 +36,9 @@ internal static class Program
             ("Disposed UI dispatcher drops its queued values and subscriber", UiDisposal),
             ("UI dispatcher preserves reentrant updates and recovers after apply errors", UiReentrancy),
             ("UI dispatcher rejects out-of-order state revisions", UiVersions),
+            ("Second process activates the owner even before UI readiness", SingleInstanceRegression.NotifyBeforeReady),
+            ("Repeated launches reuse the owner and clean exit permits restart", SingleInstanceRegression.BurstAndExit),
+            ("A crashed owner does not leave a permanent instance lock", SingleInstanceRegression.AbandonedOwner),
         ];
         var failures = 0;
         foreach (var test in tests)

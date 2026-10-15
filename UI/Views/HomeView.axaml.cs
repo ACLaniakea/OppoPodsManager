@@ -56,9 +56,6 @@ public partial class HomeView : PageView
         CbWearDetection.IsCheckedChanged += CbWearDetection_Changed;
         CbSpineHealth.IsCheckedChanged += CbSpineHealth_Changed;
         CbDevice.SelectionChanged += CbDevice_Changed;
-        CbDevice.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DeviceConnectionOption>((device, _) =>
-            new TextBlock { Text = device is null ? "" : device.DisplayName + (device.IsNearbyOnly
-                ? " · " + TranslationCatalog.Get("Status_NearbyOnly") : "") });
 
         // 充电闪电图标（与设备信息页触控图同源，支持自定义图片覆盖）
         const string iconCharge = "M0.009,7.21C-0.023,7.286 0.032,7.37 0.115,7.37H3.303V11.885C3.303,12.011 3.476,12.045 3.524,11.929L6.6,4.471C6.631,4.396 6.575,4.313 6.494,4.313H3.303V0.115C3.303,-0.01 3.132,-0.045 3.083,0.069L0.009,7.21Z";
@@ -187,7 +184,6 @@ public partial class HomeView : PageView
             ?? ControlManager?.ActiveDeviceId;
         _nextDevices.Clear();
         _nextDevices.AddRange(devices);
-        NearbyDevicesHint.IsVisible = devices.Any(device => device.IsNearbyOnly);
         _suppressEarbudSelection = true;
         CbDevice.Items.Clear();
         foreach (var device in _nextDevices)
@@ -507,8 +503,7 @@ public partial class HomeView : PageView
         AncMainRow.IsEnabled = AncSubRow.IsEnabled = !_ancCommandPending;
         if (_ancCommandPending)
         {
-            AncRealtimeHint.Text = TranslationCatalog.Get("Anc_Switching");
-            AncRealtimeHint.IsVisible = true;
+            AncRealtimeHint.IsVisible = false;
             return;
         }
         if (snapshot.Noise.Mode != NoiseMode.Unknown)

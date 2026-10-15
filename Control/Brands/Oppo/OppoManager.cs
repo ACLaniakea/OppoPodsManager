@@ -310,8 +310,9 @@ public sealed class OppoManager : BrandManagerBase, IBrandManager
             return false;
         }
         _noiseCancellation?.Apply(response.Payload.Span);
-        var success = State.Snapshot().Noise.Mode != NoiseMode.Unknown;
-        ApplicationLog.Current?.Info("Noise.Protocol", $"设置降噪协议完成：protocolIndex={protocolIndex}，success={success}。");
+        var actual = State.Snapshot().Noise.Mode;
+        var success = Capability.NoiseModes.TryGetValue(protocolIndex, out var expected) && actual == expected;
+        ApplicationLog.Current?.Info("Noise.Protocol", $"设置降噪协议完成：protocolIndex={protocolIndex}，expected={expected}，actual={actual}，success={success}。");
         return success;
     }
     public async Task<bool> SetFindDeviceAsync(bool enabled, CancellationToken cancellationToken)

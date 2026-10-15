@@ -24,7 +24,6 @@
   "Battery_WearingRight": "右耳{0}",
   "Anc_Title": "降噪控制",
   "Anc_Placeholder": "连接耳机查看降噪选项",
-  "Anc_Switching": "正在切换模式，请等待耳机确认…",
   "Anc_RealtimeHint": "实时计算：{0}",
   "Anc_ModeOff": "关闭",
   "Anc_ModeNoiseCancellation": "降噪",
@@ -304,11 +303,5 @@
   "Vivo_AudioEffect_4": "沉浸环绕",
   "Vivo_AudioEffect_5": "悠扬听书",
   "Vivo_AudioEffect_11": "至臻大师",
-  "Sidebar_MultiDeviceHelp": "耳机记忆的手机和电脑；本机名称会显示在这里。耳机型号请看首页电量卡片。",
-  "MultiDevice_HiddenHint": "本地隐藏记录：{0} 台。可在设置中点击“恢复已隐藏设备”。",
-  "Status_NearbyOnly": "附近广播，未确认连接",
-  "Status_NearbyHelp": "标注“附近广播”的耳机仅被无线扫描发现，不代表已连接本机。选择后仅查看广播状态，不会建立蓝牙音频连接。",
-  "Eq_UnavailableDisconnected": "连接耳机后可使用音效调节。",
-  "Eq_UnavailableConflict": "音效冲突，均衡器暂时禁用。请关闭冲突音效后再试。",
-  "Eq_UnavailableUnsupported": "当前耳机尚未报告可用的均衡器能力。"
+  "Anc_VocalTransparency": "人声增强通透"
 }
