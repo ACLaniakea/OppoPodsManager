@@ -13,6 +13,8 @@ public sealed class ControlManager : IAsyncDisposable
     private readonly SettingsStore? _settings;
     private readonly SemaphoreSlim _connectionGate = new(1, 1);
     private readonly SemaphoreSlim _discoveryGate = new(1, 1);
+    private readonly object _plansGate = new();
+    private readonly global::OppoPodsManager.Communication.LatestAsyncWorker<DevicePlansChangedEventArgs> _plansWorker;
     private readonly SemaphoreSlim _reconnectWake = new(0, 1);
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly object _availableDevicesLock = new();
@@ -49,6 +51,8 @@ public sealed class ControlManager : IAsyncDisposable
         _managerFactories = (managerFactories ?? [])
             .ToDictionary(factory => factory.Brand, StringComparer.OrdinalIgnoreCase);
         _settings = settings;
+        _plansWorker = new(ProcessPlansAsync, exception =>
+            ApplicationLog.Current?.Error("Discovery", "处理蓝牙设备变化失败。", exception));
         if (_deviceScanner is not null)
             _deviceScanner.PlansChanged += OnPlansChanged;
         _frontendState.InteractivePollingChanged += OnInteractivePollingChanged;
@@ -62,33 +66,40 @@ public sealed class ControlManager : IAsyncDisposable
         SignalReconnect("控制层启动");
     }
     public event EventHandler<DeviceOptionsChangedEventArgs>? AvailableDevicesChanged;
-    private async void OnPlansChanged(object? sender, DevicePlansChangedEventArgs args)
+    private void OnPlansChanged(object? sender, DevicePlansChangedEventArgs args)
     {
-        try
+        lock (_plansGate)
         {
-            await ApplyPlansAsync(args.Plans, CancellationToken.None, args.Generation);
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+            if (args.Generation > 0)
+            {
+                if (args.Generation <= Interlocked.Read(ref _lastDiscoveryGeneration))
+                    return;
+                Interlocked.Exchange(ref _lastDiscoveryGeneration, args.Generation);
+            }
+            _plansWorker.Post(args);
+        }
+    }
+
+    private async Task ProcessPlansAsync(DevicePlansChangedEventArgs args, CancellationToken cancellationToken)
+    {
+        await ApplyPlansAsync(args.Plans, cancellationToken, args.Generation);
+        if (!cancellationToken.IsCancellationRequested)
             SignalReconnect("蓝牙设备列表变化");
-        }
-        catch (Exception exception)
-        {
-            ApplicationLog.Current?.Error("Discovery", "处理蓝牙设备变化失败。", exception);
-        }
     }
     private async Task ApplyPlansAsync(
         IReadOnlyList<DeviceConnectionPlan> plans,
         CancellationToken cancellationToken,
         long generation = 0)
     {
-        if (generation > 0)
-        {
-            var previous = Interlocked.Read(ref _lastDiscoveryGeneration);
-            if (generation <= previous)
-                return;
-            Interlocked.Exchange(ref _lastDiscoveryGeneration, generation);
-        }
         await _discoveryGate.WaitAsync(cancellationToken);
         try
         {
+            // A newer snapshot may arrive while a manual scan holds the gate.
+            if (generation > 0 && generation != Interlocked.Read(ref _lastDiscoveryGeneration))
+                return;
+            cancellationToken.ThrowIfCancellationRequested();
             await ApplyPlansCoreAsync(plans, cancellationToken);
         }
         finally
@@ -837,6 +848,7 @@ public sealed class ControlManager : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         _lifetimeCancellation.Cancel();
+        await _plansWorker.DisposeAsync();
         try { _reconnectWake.Release(); } catch (SemaphoreFullException) { }
         if (_reconnectTask is not null)
         {

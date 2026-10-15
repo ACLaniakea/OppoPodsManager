@@ -1,4 +1,3 @@
-using System.Linq;
 using OppoPodsManager.Control.Core.Transport;
 
 namespace OppoPodsManager.Control.Brands.Huawei;
@@ -124,19 +123,5 @@ internal sealed class MbbFrameCodec : IFrameCodec
                 crc = (crc & 0x8000) != 0 ? (ushort)((crc << 1) ^ 0x1021) : (ushort)(crc << 1);
         }
         return crc;
-    }
-
-    // 自测：与逆向 mbb_codec.py 权威向量对齐，编译期/调试期可调用，返回 true 表示编解码一致。
-    internal static bool SelfTest()
-    {
-        var codec = new MbbFrameCodec();
-        var encoded = codec.Encode(0x2B49, [0x01, 0x01, 0x05, 0x02, 0x02, 0x10, 0x20]);
-        var expected = new byte[] { 0x5A, 0x00, 0x0A, 0x00, 0x2B, 0x49, 0x01, 0x01, 0x05, 0x02, 0x02, 0x10, 0x20, 0xB9, 0xD4 };
-        if (!encoded.AsSpan().SequenceEqual(expected))
-            return false;
-        var decoded = codec.Decode(expected);
-        var frame = decoded.FirstOrDefault();
-        return frame.Command == 0x2B49 &&
-               frame.Payload.Span.SequenceEqual(new byte[] { 0x01, 0x01, 0x05, 0x02, 0x02, 0x10, 0x20 });
     }
 }

@@ -9,6 +9,7 @@ public sealed class CommunicationController : IDisposable
     private readonly IReadOnlyList<IDeviceDiscovery> _discoveries;
     private readonly IReadOnlyList<IDeviceDiscoveryMonitor> _monitors;
     private readonly object _gate = new();
+    private readonly LatestAsyncWorker<bool> _refreshWorker;
     private long _discoveryGeneration;
     private bool _disposed;
 
@@ -19,6 +20,8 @@ public sealed class CommunicationController : IDisposable
         _factories = factories.ToDictionary(factory => factory.Transport, StringComparer.OrdinalIgnoreCase);
         _discoveries = discoveries.ToArray();
         _monitors = _discoveries.OfType<IDeviceDiscoveryMonitor>().ToArray();
+        _refreshWorker = new LatestAsyncWorker<bool>(RefreshAsync, exception =>
+            global::OppoPodsManager.Control.Subsystems.Logging.ApplicationLog.Current?.Error("Discovery", "聚合设备变化失败。", exception));
         foreach (var monitor in _monitors)
             monitor.DevicesChanged += OnDevicesChanged;
     }
@@ -70,29 +73,26 @@ public sealed class CommunicationController : IDisposable
         }
 
         foreach (var monitor in _monitors)
-        {
             monitor.DevicesChanged -= OnDevicesChanged;
+        _refreshWorker.Dispose();
+        foreach (var monitor in _monitors)
             monitor.Dispose();
-        }
     }
 
-    private async void OnDevicesChanged(object? sender, DeviceCandidatesChangedEventArgs args)
+    private void OnDevicesChanged(object? sender, DeviceCandidatesChangedEventArgs args)
+        => _refreshWorker.Post(true);
+
+    private async Task RefreshAsync(bool _, CancellationToken cancellationToken)
     {
+        var snapshot = await DiscoverAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        long generation;
         lock (_gate)
         {
             if (_disposed)
                 return;
+            generation = ++_discoveryGeneration;
         }
-
-        try
-        {
-            var snapshot = await DiscoverAsync(CancellationToken.None);
-            var generation = Interlocked.Increment(ref _discoveryGeneration);
-            DevicesChanged?.Invoke(this, new DeviceCandidatesChangedEventArgs(snapshot, generation));
-        }
-        catch (Exception exception)
-        {
-            global::OppoPodsManager.Control.Subsystems.Logging.ApplicationLog.Current?.Error("Discovery", "聚合设备变化失败。", exception);
-        }
+        DevicesChanged?.Invoke(this, new DeviceCandidatesChangedEventArgs(snapshot, generation));
     }
 }

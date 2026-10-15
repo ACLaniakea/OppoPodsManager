@@ -2,7 +2,7 @@
 
 [中文](https://github.com/Zhaoyi-ya/OppoPodsManager/blob/main/README.md) | [English](https://github.com/Zhaoyi-ya/OppoPodsManager/blob/main/README_EN.md)
 
-> **📦 项目已归档**：本仓库自 2026-09-30 起停止开发与维护，现有代码保持原样归档，供大家自行查阅。
+> **📦 上游项目已归档**：上游仓库自 2026-09-30 起停止开发与维护，现有代码保持原样归档，供大家自行查阅。
 > 原因与后续安排见 [项目归档说明](ARCHIVE.md)。
 
 ---
@@ -13,6 +13,8 @@
 华为 FreeBuds、小米 / Redmi、漫步者、Apple AirPods。能力按型号自动识别，界面只显示你的耳机真正支持的功能。
 
 ---
+
+> 本 fork 的 **2.0.1** 修复设备发现中的缓存与异步任务累积，并清理相关冗余代码。变更、测试与编译方法见 [MEMORY_FIX.md](MEMORY_FIX.md)。
 
 ## 目录
 

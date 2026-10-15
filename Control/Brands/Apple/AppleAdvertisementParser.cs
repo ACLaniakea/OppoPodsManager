@@ -11,8 +11,7 @@ internal static class AppleAdvertisementParser
     public static bool TryParse(ReadOnlySpan<byte> data, out AppleStatus status)
     {
         status = null!;
-        // 参考实现要求长度 > 20 以排除加密变体；此处至少需要可读到第 10 字节。
-        if (data.Length < 11)
+        if (!global::OppoPodsManager.Communication.Abstractions.AppleProximityAdvertisement.IsSupported(data))
             return false;
 
         var paired = data[2] == 1;

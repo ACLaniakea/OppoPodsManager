@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -12,9 +12,24 @@ internal static class WindowsBluetoothDiscoveryCore
 {
     private const int WinRtTimeoutMs = 4000;
     private const int MaxNameSize = 248;
+    private static readonly object WinRtGate = new();
+    private static Task<IReadOnlyList<(ulong Address, string Name)>>? _winRtEnumeration;
 
-    public static IReadOnlyList<(ulong Address, string Name, IReadOnlyList<Guid> ServiceIds)> ListConnected()
+    // Even if a driver does not finish cancellation promptly, reuse the in-flight
+    // enumeration instead of launching another orphan operation on every timeout.
+    private static Task<IReadOnlyList<(ulong Address, string Name)>> GetWinRtEnumeration()
     {
+        lock (WinRtGate)
+        {
+            if (_winRtEnumeration is null || _winRtEnumeration.IsCompleted)
+                _winRtEnumeration = EnumerateWinRtAsync();
+            return _winRtEnumeration;
+        }
+    }
+
+    public static async Task<IReadOnlyList<(ulong Address, string Name, IReadOnlyList<Guid> ServiceIds)>> ListConnectedAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var merged = new Dictionary<ulong, (string Name, IReadOnlyList<Guid> ServiceIds)>();
         try
         {
@@ -33,17 +48,23 @@ internal static class WindowsBluetoothDiscoveryCore
 
         try
         {
-            var task = EnumerateWinRtAsync();
-            if (task.Wait(WinRtTimeoutMs))
+            var devices = await GetWinRtEnumeration().WaitAsync(
+                TimeSpan.FromMilliseconds(WinRtTimeoutMs), cancellationToken);
+            foreach (var device in devices)
             {
-                foreach (var device in task.Result)
-                {
-                    if (device.Address == 0)
-                        continue;
-                    var serviceIds = ReadServiceIds(device.Address);
-                    merged.TryAdd(device.Address, (device.Name, serviceIds));
-                }
+                if (device.Address == 0)
+                    continue;
+                var serviceIds = ReadServiceIds(device.Address);
+                merged.TryAdd(device.Address, (device.Name, serviceIds));
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
+        {
+            // Win32 results remain useful when WinRT is unavailable or times out.
         }
         catch (Exception exception)
         {
@@ -58,14 +79,16 @@ internal static class WindowsBluetoothDiscoveryCore
 
     private static async Task<IReadOnlyList<(ulong Address, string Name)>> EnumerateWinRtAsync()
     {
+        using var timeout = new CancellationTokenSource(WinRtTimeoutMs);
+        var cancellationToken = timeout.Token;
         var result = new List<(ulong Address, string Name)>();
         var seen = new HashSet<ulong>();
         var selector = global::Windows.Devices.Bluetooth.BluetoothDevice.GetDeviceSelectorFromConnectionStatus(
             global::Windows.Devices.Bluetooth.BluetoothConnectionStatus.Connected);
-        var devices = await global::Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(selector);
+        var devices = await global::Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(selector).AsTask(cancellationToken);
         foreach (var info in devices)
         {
-            var device = await global::Windows.Devices.Bluetooth.BluetoothDevice.FromIdAsync(info.Id);
+            using var device = await global::Windows.Devices.Bluetooth.BluetoothDevice.FromIdAsync(info.Id).AsTask(cancellationToken);
             if (device is null || device.ConnectionStatus != global::Windows.Devices.Bluetooth.BluetoothConnectionStatus.Connected)
                 continue;
 

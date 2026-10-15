@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="ControlIntegration/**/*.cs" />
+    <Compile Include="../Communication/LatestAsyncWorker.cs" Link="Source/LatestAsyncWorker.cs" />
+    <Compile Include="../Communication/CommunicationController.cs" Link="Source/CommunicationController.cs" />
+    <Compile Include="../Communication/Abstractions/*.cs" Link="Source/%(Filename)%(Extension)" />
+    <Compile Include="../Communication/Windows/BleAdvertisementHub.cs" Link="Source/BleAdvertisementHub.cs" />
+    <Compile Include="../Communication/Windows/WindowsBleAdvertisementDiscovery.cs" Link="Source/WindowsBleAdvertisementDiscovery.cs" />
+    <Compile Include="../Control/Brands/Apple/AppleAdvertisementParser.cs" Link="Source/AppleAdvertisementParser.cs" />
+    <Compile Include="../Control/Brands/Apple/AppleModels.cs" Link="Source/AppleModels.cs" />
+    <Compile Include="../Control/Brands/Huawei/MbbFrameCodec.cs" Link="Source/MbbFrameCodec.cs" />
+    <Compile Include="../Control/Core/Transport/IFrameCodec.cs" Link="Source/IFrameCodec.cs" />
+  </ItemGroup>
+</Project>

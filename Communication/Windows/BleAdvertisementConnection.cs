@@ -11,7 +11,6 @@ internal sealed class BleAdvertisementConnection : IRawConnection, IAppleAdverti
 {
     private readonly BleAdvertisementHub _hub;
     private readonly string _stableId;
-    private readonly EventHandler<AppleAdvertisementEventArgs> _onAdvertisement;
     private EventHandler<byte[]>? _updated;
     private bool _disposed;
 
@@ -19,8 +18,7 @@ internal sealed class BleAdvertisementConnection : IRawConnection, IAppleAdverti
     {
         _hub = hub;
         _stableId = stableId;
-        _onAdvertisement = OnHubAdvertisement;
-        _hub.AdvertisementReceived += _onAdvertisement;
+        _hub.AdvertisementReceived += OnHubAdvertisement;
     }
 
     public bool IsConnected => true;
@@ -58,13 +56,13 @@ internal sealed class BleAdvertisementConnection : IRawConnection, IAppleAdverti
         _updated?.Invoke(this, e.Data);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (_disposed)
-            return;
+            return ValueTask.CompletedTask;
         _disposed = true;
-        _hub.AdvertisementReceived -= _onAdvertisement;
+        _hub.AdvertisementReceived -= OnHubAdvertisement;
         _updated = null;
-        await Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

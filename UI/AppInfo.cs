@@ -9,5 +9,5 @@ public static class AppInfo
     public static string VersionLabel { get; set; } = "v?";
 
     /// <summary>发布页地址：不再联网检测版本，界面上「获取更新」直接跳转到该地址。</summary>
-    public const string ReleasesUrl = "https://github.com/Zhaoyi-ya/OppoPodsManager/releases/latest";
+    public const string ReleasesUrl = "https://github.com/ACLaniakea/OppoPodsManager/releases";
 }

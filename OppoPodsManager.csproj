@@ -15,8 +15,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>OppoPodsManager</AssemblyName>
-    <!-- next 分支内测版：版本号刻意高于正式版（当前 1.1.10），使更新检查永远判定为已最新、不弹更新提示。 -->
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <ApplicationIcon>Assets\VisualAssets\tuopan.ico</ApplicationIcon>
     <TargetFramework Condition="'$(EnableWindowsBackend)' == 'true'">net10.0-windows10.0.19041.0</TargetFramework>
     <TargetFramework Condition="'$(EnableWindowsBackend)' != 'true'">net10.0</TargetFramework>
@@ -51,11 +50,9 @@
     <!-- 裁剪保护：Tmds.DBus 用反射动态生成 D-Bus 代理（IGattCharacteristic1 等），
          不标记为 root 会被 IL 裁切器删掉代理生成路径，导致 Linux GATT 链路运行期失效。 -->
     <TrimmerRootAssembly Include="Tmds.DBus" />
-    <Compile Remove="Communication\Transport\Windows\**\*.cs" />
     <Compile Remove="Communication\Windows\**\*.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(EnableWindowsBackend)' == 'true'">
-    <Compile Remove="Communication\Transport\Linux\**\*.cs" />
     <Compile Remove="Communication\Linux\**\*.cs" />
   </ItemGroup>
 
@@ -71,6 +68,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="RegressionTests\**\*.cs" />
     <None Remove="Assets\Localization\Strings*.json" />
     <AvaloniaResource Include="Assets\VisualAssets\**\*" />
     <AvaloniaResource Include="Assets\Oplus\Images\*.png" />
